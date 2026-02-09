@@ -10,6 +10,8 @@ async function bootstrap() {
       'http://localhost:5173',
       'http://192.168.16.31',
       'http://192.168.16.31:5173',
+      'http://192.168.16.130',
+      'http://192.168.16.130:5173',
     ],
     credentials: true,
   });
@@ -21,6 +23,7 @@ async function bootstrap() {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
+        // 开发环境走同源代理时用 lax，避免 SameSite=None + 非 HTTPS 被浏览器拒绝
         sameSite: 'lax',
       },
     }),

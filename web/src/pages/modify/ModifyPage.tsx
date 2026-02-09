@@ -172,7 +172,7 @@ export default function ModifyPage() {
 
     try {
       // 新接口：NestJS
-      const res = await fetch("http://192.168.16.31:3000/api/modify/other-charge", {
+      const res = await fetch("/api/modify/other-charge", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
