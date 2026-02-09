@@ -1,4 +1,3 @@
-import React from "react";
 import { NavLink, useNavigate, useSearchParams } from "react-router-dom";
 import { moduleMenus } from "./menus";
 import { useSidebar } from "./SidebarContext";
