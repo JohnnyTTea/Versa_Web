@@ -1,0 +1,61 @@
+/* App layout adjustments to align with legacy PHP layout */
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-body {
+  display: block;
+  min-height: calc(100vh - 120px); /* navbar + footer */
+  padding-top: 60px; /* fixed navbar height */
+}
+
+.app-main {
+  padding: 8px 10px;
+  padding-bottom: 100px; /* leave space for fixed footer */
+  margin-left: 180px; /* align with legacy sidebar width */
+  min-height: calc(100vh - 120px);
+  position: relative;
+  overflow: visible;
+  background:
+    radial-gradient(1200px 600px at -10% -20%, #fff2ee 0%, transparent 55%),
+    radial-gradient(900px 500px at 110% 0%, #e7f3ff 0%, transparent 60%),
+    linear-gradient(180deg, #fbfcff 0%, #f5f7fb 100%);
+}
+
+.app-main::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(600px 240px at 30% 0%, rgba(255, 107, 74, 0.18), transparent 55%),
+    radial-gradient(700px 260px at 80% 0%, rgba(59, 179, 255, 0.16), transparent 55%);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.app-main > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Shared sticky search bar */
+.sticky-search {
+  position: sticky;
+  top: 70px;
+  z-index: 5;
+}
+
+.progressive-enter {
+  animation: progressiveIn 420ms ease both;
+}
+
+@keyframes progressiveIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

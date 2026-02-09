@@ -1,0 +1,177 @@
+/* ==========================
+   Sidebar（左侧导航栏）
+   ========================== */
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 160px;
+  height: 100vh;
+  background:
+    radial-gradient(520px 260px at -10% -10%, rgba(255, 107, 74, 0.22), transparent 55%),
+    radial-gradient(520px 260px at 110% 0%, rgba(59, 179, 255, 0.22), transparent 60%),
+    linear-gradient(180deg, #eef3ff 0%, #e7edf8 100%);
+  color: #0a1628;
+  padding: 70px 12px 20px;
+  font-size: 16px;
+  z-index: 1200;
+  overflow-y: auto;
+  box-shadow: 8px 0 24px rgba(15, 23, 42, 0.12);
+  border-right: 1px solid rgba(15, 23, 42, 0.12);
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+
+.sidebar.collapsed {
+  width: 72px;
+}
+
+.sidebar-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-top-frame {
+  padding: 0 0 4px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.sidebar-divider {
+  height: 1px;
+  background: rgba(15, 23, 42, 0.12);
+  margin: 12px 6px 8px;
+}
+
+.sidebar-title {
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar ul li {
+  margin: 12px 0;
+}
+
+.sidebar ul li a {
+  color: #0a1628;
+  text-decoration: none;
+  padding: 8px 12px;
+  display: block;
+  border-radius: 4px;
+  transition: 0.15s;
+  font-size: 16px;
+}
+
+.sidebar ul li a:active,
+.sidebar-submenu li a:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+
+.sidebar > ul > li > a:not(.home-link):hover {
+  background-color: rgba(37, 99, 235, 0.12);
+  color: #0a1628;
+  transform: translateX(2px);
+}
+
+.sidebar > ul > li > a.active {
+  background-color: rgba(37, 99, 235, 0.2);
+  color: #0a1628;
+}
+
+.sidebar .home-link {
+  font-weight: bold;
+  font-size: 20px;
+  letter-spacing: 0.2px;
+}
+
+/* ==========================
+   Submenu（子菜单）
+   ========================== */
+.sidebar-submenu {
+  margin-top: 4px;
+  border-left: 1px solid rgba(37, 99, 235, 0.25);
+}
+
+.sidebar-submenu li {
+  margin: 4px 0;
+}
+
+.sidebar-submenu li a {
+  display: block;
+  font-size: 14px;
+  color: #3f5170;
+  margin: 0 8px 0 18px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  transition: 0.15s;
+}
+
+.sidebar-submenu li a:hover {
+  color: #0a1628;
+  background-color: rgba(37, 99, 235, 0.12);
+  transform: translateX(2px);
+}
+
+.sidebar-submenu li a.active {
+  color: #0a1628;
+  font-weight: bold;
+  background-color: rgba(37, 99, 235, 0.2);
+  border-left: 3px solid #2563eb;
+  padding-left: 10px;
+}
+
+/* Collapsed */
+.sidebar.collapsed .sidebar-label {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-submenu {
+  border-left: none;
+}
+
+.sidebar-toggle {
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  color: #0a1628;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sidebar-back {
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  color: #0a1628;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
+}
+
+.sidebar-back:hover {
+  background: rgba(37, 99, 235, 0.18);
+}
+
+.sidebar-back:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.35);
+}

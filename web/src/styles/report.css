@@ -1,0 +1,423 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+/* Report export styles (legacy PHP aligned) */
+.report-container {
+  margin-left: 0;
+  padding: 20px;
+  display: flex;
+  gap: 20px;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  color: #0f172a;
+}
+
+.report-container h3 {
+  font-family: "Space Grotesk", "DM Sans", sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  color: #0f172a;
+}
+
+.report-left {
+  margin-top: -14px;
+  width: 260px;
+}
+
+.report-list {
+  width: 100%;
+  height: 450px;
+  font-size: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 6px;
+  background: #f8fafc;
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.report-export-bar {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+}
+
+.report-export-bar input {
+  padding: 8px 10px;
+  font-size: 14px;
+  width: 100%;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.report-export-bar button {
+  padding: 8px 12px;
+  background-color: #0f172a;
+  border: none;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 10px;
+  font-size: 14px;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.report-export-bar button:hover:enabled {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.2);
+}
+
+.report-export-bar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.report-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 40px;
+}
+
+.report-right h3 {
+  margin: 4px 0;
+}
+
+.report-right textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 15px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+}
+
+.status-box {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 10px 12px;
+  min-height: 80px;
+  border-radius: 12px;
+  font-size: 15px;
+}
+
+/* ===== DB Browser (table.php legacy) ===== */
+:root {
+  --wb-bg: #f3f5f7;
+  --wb-panel: #ffffff;
+  --wb-border: #d7dde3;
+  --wb-text: #1f2937;
+  --wb-muted: #6b7280;
+  --wb-left: #2b2f36;
+  --wb-left2: #23262c;
+  --wb-leftText: #e5e7eb;
+  --wb-rowHover: #f6faff;
+}
+
+.wb-wrap {
+  margin-left: 0;
+  padding-top: 10px;
+  padding-bottom: 90px;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue",
+    Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.wb-topbar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--wb-panel);
+  border-bottom: 1px solid var(--wb-border);
+}
+.wb-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-right: 10px;
+}
+.wb-pill {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--wb-muted);
+}
+
+.wb-app {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: calc(100vh - 60px - 44px - 90px);
+  min-height: 520px;
+}
+
+.wb-left {
+  background: var(--wb-left);
+  color: var(--wb-leftText);
+  border-right: 1px solid #1c1f24;
+  overflow: auto;
+}
+.wb-left-header {
+  padding: 10px 12px;
+  background: var(--wb-left2);
+  border-bottom: 1px solid #1c1f24;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.wb-left-header .wb-h1 {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  opacity: 0.95;
+}
+.wb-filter {
+  margin-top: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid #3a3f47;
+  background: #16191e;
+  color: #e5e7eb;
+  outline: none;
+}
+
+.wb-tree {
+  padding: 8px 6px 16px 6px;
+}
+.wb-schema {
+  margin: 6px 0;
+  border: 1px solid #3a3f47;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.wb-schema > button {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 0;
+  background: #1f232a;
+  color: var(--wb-leftText);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+}
+.wb-schema > button:hover {
+  background: #252a33;
+}
+.wb-tables {
+  padding: 6px 6px 8px 6px;
+  background: #191c22;
+  display: none;
+}
+.wb-schema.open .wb-tables {
+  display: block;
+}
+
+.wb-table-item {
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #d1d5db;
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.wb-table-item:hover {
+  background: #222733;
+  border-color: #2f3646;
+}
+.wb-table-item.active {
+  background: rgba(78, 161, 255, 0.18);
+  border-color: rgba(78, 161, 255, 0.45);
+  color: #fff;
+}
+.wb-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  border: 1px solid #6b7280;
+  border-radius: 2px;
+  opacity: 0.85;
+}
+
+.wb-main {
+  overflow: hidden;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+}
+
+.wb-panel {
+  flex: 1;
+  min-height: 0;
+  background: var(--wb-panel);
+  border: 1px solid var(--wb-border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.wb-panel-header {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--wb-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.wb-where {
+  font-size: 12px;
+  color: var(--wb-muted);
+}
+.wb-where strong {
+  color: var(--wb-text);
+}
+.wb-status {
+  font-size: 12px;
+  color: var(--wb-muted);
+}
+
+.wb-querybar {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--wb-border);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: #fff;
+}
+.wb-input {
+  flex: 1;
+  height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  outline: none;
+  font-size: 12px;
+}
+.wb-select {
+  height: 32px;
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  padding: 0 8px;
+}
+.wb-btn {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.wb-grid-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+table.wb-grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+table.wb-grid thead th {
+  position: sticky;
+  top: 0;
+  background: #fafbfc;
+  z-index: 1;
+  border-bottom: 1px solid var(--wb-border);
+  padding: 9px 10px;
+  text-align: left;
+  white-space: nowrap;
+  font-weight: 800;
+  color: #374151;
+}
+table.wb-grid tbody td {
+  border-bottom: 1px solid #edf0f3;
+  padding: 8px 10px;
+  white-space: nowrap;
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+table.wb-grid tbody tr:hover td {
+  background: var(--wb-rowHover);
+}
+
+.wb-empty {
+  padding: 20px;
+  color: var(--wb-muted);
+  font-size: 13px;
+}
+
+.wb-log {
+  height: 180px;
+  background: #fff;
+  border: 1px solid var(--wb-border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1px;
+}
+
+.wb-log-header {
+  padding: 2px 12px;
+  border-bottom: 1px solid var(--wb-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--wb-muted);
+}
+.wb-log-body {
+  overflow: auto;
+}
+
+table.wb-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+table.wb-log-table th,
+table.wb-log-table td {
+  border-bottom: 1px solid #edf0f3;
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: top;
+}
+table.wb-log-table td.wb-log-cmd {
+  white-space: normal;
+  word-break: break-word;
+}

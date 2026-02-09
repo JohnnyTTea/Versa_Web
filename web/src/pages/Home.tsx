@@ -1,0 +1,194 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import "../styles/home.css";
+
+type PermKey =
+  | "product"
+  | "sales"
+  | "purchase"
+  | "dto"
+  | "modify"
+  | "report"
+  | "inventory"
+  | "review"
+  | "settings";
+
+type Perms = Partial<Record<PermKey, boolean>>;
+
+type MenuItem = {
+  key: PermKey;
+  icon: React.ReactNode;
+  cn: string;
+  en: string;
+  to: string;
+  forceDisabled?: boolean;
+};
+
+type MenuButtonProps = {
+  disabled: boolean;
+  to: string;
+  icon: React.ReactNode;
+  cn: string;
+  en: string;
+  style?: React.CSSProperties;
+};
+
+type MeApiResp = {
+  ok?: boolean;
+  user?: {
+    username?: string;
+    perms?: Perms;
+  };
+};
+
+async function fetchMe(): Promise<MeApiResp | null> {
+  try {
+    const res = await fetch("/api/me", {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as MeApiResp;
+  } catch {
+    return null;
+  }
+}
+
+function MenuButton({ disabled, to, icon, cn, en, style }: MenuButtonProps) {
+  const className = disabled ? "menu-btn disabled" : "menu-btn";
+
+  if (disabled) {
+    return (
+      <button
+        className={className}
+        type="button"
+        disabled
+        aria-disabled="true"
+        style={style}
+      >
+        {icon} {cn}
+        <br />
+        <span className="en">{en}</span>
+      </button>
+    );
+  }
+
+  return (
+    <Link className={className} to={to} style={style}>
+      {icon} {cn}
+      <br />
+      <span className="en">{en}</span>
+    </Link>
+  );
+}
+
+export default function Home() {
+  const [loading, setLoading] = useState(true);
+  const [perms, setPerms] = useState<Perms | null>(null);
+  const [username, setUsername] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    fetchMe().then((me) => {
+      if (!mounted) return;
+
+      // ✅ 对齐后端：me = { ok: true, user: { username, perms } }
+      setUsername(me?.user?.username || "");
+      setPerms(me?.user?.perms || null);
+
+      setLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const canMenu = (key: PermKey) => {
+    // 权限还在加载时：先不禁用，避免“点不进去”的错觉
+    if (loading) return true;
+
+    // 没拿到 perms（比如后端没返回）时：默认全开放（和你 PHP 逻辑一致）
+    if (!perms) return true;
+
+    return !!perms[key];
+  };
+
+  // ✅ 关键：强类型 menus，让 m.key 是 PermKey（不再是 string）
+  const menus = useMemo<MenuItem[]>(
+    () => [
+      { key: "product", icon: "🔍", cn: "查找产品", en: "Product Search", to: "/product" },
+      { key: "sales", icon: "📈", cn: "订单查询", en: "Sales Order", to: "/sales?reset=1" },
+      { key: "purchase", icon: "📋", cn: "采购管理", en: "Purchase", to: "/purchase" },
+      { key: "dto", icon: "➕", cn: "DTO 业务", en: "DTO Process", to: "/dto" },
+      { key: "modify", icon: "📥", cn: "数据更新", en: "Data Modification", to: "/modify" },
+      { key: "report", icon: "🖨", cn: "数据下载", en: "Report Download", to: "/report" },
+      { key: "inventory", icon: "📦", cn: "库存管理", en: "Inventory Manage", to: "/inventory" },
+      { key: "review", icon: "📝", cn: "审核记录", en: "Pending Review", to: "/review" },
+      { key: "settings", icon: "⚙", cn: "系统设置", en: "System Settings", to: "/settings" },
+    ],
+    []
+  );
+
+  const availableCount = useMemo(() => {
+    if (loading) return menus.length;
+    if (!perms) return menus.length;
+    return menus.filter((m) => !!perms[m.key]).length;
+  }, [loading, menus, perms]);
+
+  return (
+    <div className="home-page">
+      <section className="home-hero">
+        <div className="hero-card">
+          <div className="hero-title">Versa Web System</div>
+          <div className="hero-subtitle">Advance Tuning</div>
+          <div className="hero-user">
+            👤 {username ? `Hello, ${username}` : "Not signed in"}
+          </div>
+          <div className="hero-meta">
+            <span className="meta-pill">Modules Available: {availableCount}</span>
+            <span className="meta-pill">Total Modules: {menus.length}</span>
+          </div>
+        </div>
+
+        <div className="hero-panels">
+          <div className="mini-card">
+            <div className="mini-title">Quick Tip</div>
+            <div className="mini-body">Use the sidebar to jump between modules fast.</div>
+          </div>
+          <div className="mini-card">
+            <div className="mini-title">Permissions</div>
+            <div className="mini-body">
+              {perms ? "Role-based access enabled." : "Default access (no perms loaded)."}
+            </div>
+          </div>
+          <div className="mini-card">
+            <div className="mini-title">Status</div>
+            <div className="mini-body">{loading ? "Loading user info..." : "System ready."}</div>
+          </div>
+        </div>
+      </section>
+
+      <section className="home-section">
+        <div className="section-title">Quick Access</div>
+        <div className="menu-grid">
+          {menus.map((m, idx) => {
+            const disabled = m.forceDisabled ? true : !canMenu(m.key);
+            return (
+              <MenuButton
+                key={m.key}
+                disabled={disabled}
+                to={m.to}
+                icon={m.icon}
+                cn={m.cn}
+                en={m.en}
+                style={{ ["--i" as any]: idx }}
+              />
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}

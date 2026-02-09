@@ -1,0 +1,8 @@
+[
+  { "name": "Ww", "states": ["WA","OR","ID","CA","NV","UT","AZ","AK","HI"] },
+  { "name": "Wm", "states": ["MT","WY","CO","NM","ND","SD","NE","KS","OK","TX"] },
+  { "name": "En", "states": ["MN","IA","MO","WI","IL","MI","IN","OH","MA","VT","ME","NH","RI","CT","NJ","DE","NY","PA","MD","WV"] },
+  { "name": "Es", "states": ["KY","VA","AR","LA","MS","TN","AL","NC","SC","GA","FL"] },
+  { "name": "All_West", "states": ["WA","OR","ID","CA","NV","UT","AZ","AK","HI","MT","WY","CO","NM","ND","SD","NE","KS","OK","TX"] },
+  { "name": "All_East", "states": ["MN","IA","MO","WI","IL","MI","IN","OH","MA","VT","ME","NH","RI","CT","NJ","DE","NY","PA","MD","WV","KY","VA","AR","LA","MS","TN","AL","NC","SC","GA","FL"] }
+]

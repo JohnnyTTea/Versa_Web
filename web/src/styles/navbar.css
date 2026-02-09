@@ -1,0 +1,72 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+/* Nevigation Bar */
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background:
+    radial-gradient(1200px 600px at -10% -20%, #fff2ee 0%, transparent 55%),
+    radial-gradient(900px 500px at 110% 0%, #e7f3ff 0%, transparent 60%),
+    linear-gradient(180deg, #fbfcff 0%, #f5f7fb 100%);
+  padding: 8px 24px;
+  height: 60px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1100;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  /* margin-left: 160px;  */
+}
+
+.navbar-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit; /* 保持文字顏色一致 */
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+  margin-left: 160px;
+}
+
+.navbar-logo {
+  height: 36px;
+  margin-right: 10px;
+}
+
+.navbar-title {
+  font-family: "Space Grotesk", "DM Sans", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+}
+
+.navbar-right {
+  font-size: 14px;
+  color: #475569;
+}
+
+.navbar-user {
+  font-weight: bold;
+}
+
+.navbar-right .navbar-link {
+  background: transparent;
+  border: none;
+  margin-left: 10px;
+  cursor: pointer;
+  color: #475569;
+  font-size: 14px;
+}
+
+.navbar-right .navbar-link:hover {
+  text-decoration: none;
+  color: #0f172a;
+}

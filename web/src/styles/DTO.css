@@ -1,0 +1,173 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+/* ===== DTO 页面整体布局 ===== */
+.dto-page {
+  display: flex;
+  min-height: calc(100vh - 0px);
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  color: #0f172a;
+}
+
+/* 只保留主区域（因为 sidebar 已移除） */
+.dto-main {
+  flex: 1;
+  padding: 16px 18px 60px;
+}
+
+/* ===== 顶部标题 + 操作区 ===== */
+.dto-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.dto-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-family: "Space Grotesk", "DM Sans", sans-serif;
+  font-weight: 700;
+}
+
+/* ===== 操作按钮 ===== */
+.dto-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dto-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #0f172a;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.dto-btn:hover:not(:disabled) {
+  background: #eef2f7;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
+.dto-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dto-btn-primary {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+
+.dto-btn-primary:hover:not(:disabled) {
+  background: #1f2937;
+}
+
+/* ===== 上传 ===== */
+.dto-upload {
+  margin-bottom: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+}
+
+.dto-upload button {
+  padding: 8px 12px;
+  cursor: pointer;
+  background: #0f172a;
+  color: #fff;
+  border: 1px solid #0f172a;
+  border-radius: 12px;
+  font-size: 12px;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.dto-upload button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.2);
+}
+
+/* ===== 表格 ===== */
+.dto-table-wrap {
+  width: 100%;
+}
+
+.dto-empty {
+  padding: 10px;
+  color: #64748b;
+}
+
+.dto-table-container {
+  overflow-x: auto;
+}
+
+.dto-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* 固定列宽 */
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.dto-table th,
+.dto-table td {
+  padding: 4px 6px;
+  font-size: 12px;
+  text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
+  white-space: normal;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dto-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.dto-table td {
+  color: #334155;
+}
+
+.dto-table td input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 2px 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+/* ===== 下载提示 ===== */
+.dto-last-download {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.dto-last-download span {
+  color: #0ea5e9;
+  font-weight: 600;
+}
+    

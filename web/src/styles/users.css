@@ -1,0 +1,84 @@
+/* 密码单元格布局 */
+.password-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.password-cell .password-input {
+  flex: 1;
+  box-sizing: border-box;
+}
+
+/* 小眼睛按钮样式 */
+.toggle-password-btn {
+  padding: 2px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background-color: #f3f4f6;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.toggle-password-btn:hover {
+  background-color: #e5e7eb;
+}
+
+/* 状态样式 */
+.status-enabled {
+  color: #16a34a;
+}
+
+.status-disabled {
+  color: #b91c1c;
+}
+
+/* 表格样式（补齐，让视觉更接近你 PHP） */
+.table-wrapper {
+  overflow: auto;
+}
+
+.user-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.user-table th,
+.user-table td {
+  border-bottom: 1px solid #eee;
+  padding: 8px;
+  vertical-align: middle;
+}
+
+.user-table th {
+  background: #fafafa;
+}
+
+/* 可编辑输入框效果 */
+.editable {
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.editing {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+/* 按钮 */
+.modify-btn,
+.save-btn,
+.cancel-btn,
+.delete-btn,
+.status-btn {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.delete-btn {
+  border-color: #ef4444;
+}

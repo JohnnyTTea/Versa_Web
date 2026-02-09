@@ -1,0 +1,191 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+.home-page {
+  min-height: 100vh;
+  padding: 8px 4px 40px;
+  color: #0f172a;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(99, 102, 241, 0.15), transparent 50%),
+    radial-gradient(900px 500px at 95% 0%, rgba(16, 185, 129, 0.12), transparent 45%),
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  position: relative;
+  overflow: hidden;
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+}
+
+.home-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, 1fr);
+  gap: 16px;
+  margin: 8px 4px 18px;
+}
+
+.hero-card {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(6px);
+  animation: riseIn 500ms ease both;
+}
+
+.hero-title {
+  font-family: "Space Grotesk", "DM Sans", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.hero-subtitle {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 15px;
+}
+
+.hero-user {
+  margin-top: 16px;
+  font-size: 15px;
+  color: #1e293b;
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.meta-pill {
+  background: #0f172a;
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+.hero-panels {
+  display: grid;
+  gap: 10px;
+}
+
+.mini-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+  animation: riseIn 560ms ease both;
+}
+
+.mini-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #0f172a;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.mini-body {
+  font-size: 13px;
+  color: #475569;
+}
+
+.home-section {
+  margin-top: 18px;
+}
+
+.section-title {
+  font-family: "Space Grotesk", "DM Sans", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 6px 6px 12px;
+  color: #0f172a;
+}
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin: 0 4px 24px;
+  max-width: 980px;
+}
+
+.menu-btn {
+  display: block;
+  padding: 22px 18px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  text-align: left;
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  text-decoration: none;
+  border-radius: 14px;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  animation: cardIn 520ms ease both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+.menu-btn .en {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.menu-btn:hover {
+  transform: translateY(-3px);
+  border-color: rgba(15, 23, 42, 0.2);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+}
+
+/* ✅ 禁用状态（对应你 PHP 的 disabled 样式） */
+.menu-btn.disabled {
+  background-color: #eef2f7;
+  color: #94a3b8;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.menu-btn.disabled .en {
+  color: #94a3b8;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .home-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-grid {
+    max-width: 100%;
+  }
+}
