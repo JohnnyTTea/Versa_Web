@@ -145,7 +145,7 @@ export default function OpoList() {
     {
       key: "Itemno",
       label: "Itemno",
-      render: (row, rowKey, isOpen, toggle) => {
+      render: (row, _rowKey, isOpen, toggle) => {
         const itemText = row.Itemno ? String(row.Itemno) : "";
         const hasMore = itemText.includes(",");
         return (

@@ -31,14 +31,6 @@ type RpoDetailResp = {
   lines: RpoLine[];
 };
 
-function formatDate(v: any): string {
-  if (!v) return "";
-  const d = new Date(v);
-  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  if (typeof v === "string" && v.length >= 10) return v.slice(0, 10);
-  return String(v);
-}
-
 function toNumber(v: any): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
