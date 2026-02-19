@@ -10,6 +10,7 @@ import { SalesModule } from './sales/sales.module';
 import { DtoModule } from './dto/dto.module';
 import { ModifyModule } from './modify/modify.module';
 import { ReportModule } from './report/report.module';
+import { PurchaseModule } from './purchase/purchase.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ReportModule } from './report/report.module';
     DtoModule,
     ModifyModule,
     ReportModule,
+    PurchaseModule,
     UsersModule,
     RolesModule,
     LogModule,

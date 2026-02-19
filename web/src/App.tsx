@@ -20,6 +20,15 @@ import ModifyPage from "./pages/modify/ModifyPage";
 // Sales Page
 import Sales from "./pages/salesorder/Sales";
 import Invoice from "./pages/salesorder/Invoices";
+// Purchase Page
+import FpoList from "./pages/purchase/FpoList";
+import FpoDetail from "./pages/purchase/FpoDetail";
+import FpoUpload from "./pages/purchase/FpoUpload";
+import OpoList from "./pages/purchase/OpoList";
+import OpoDetail from "./pages/purchase/OpoDetail";
+import RpoList from "./pages/purchase/RpoList";
+import RpoDetail from "./pages/purchase/RpoDetail";
+import Vendor from "./pages/purchase/Vendor";
 // Report Page
 import ReportExportPage from "./pages/reports/ReportExportPage";
 import DbBrowserPage from "./pages/reports/DbBrowserPage";
@@ -63,6 +72,15 @@ export default function App() {
             {/* Sales */}
             <Route path="/sales" element={<Sales />} />
             <Route path="/sales/invoice" element={<Invoice />} />
+            {/* Purchase */}
+            <Route path="/purchase" element={<FpoList />} />
+            <Route path="/purchase/fpo/upload" element={<FpoUpload />} />
+            <Route path="/purchase/fpo/:fpoNo" element={<FpoDetail />} />
+            <Route path="/purchase/opo" element={<OpoList />} />
+            <Route path="/purchase/opo/:opono" element={<OpoDetail />} />
+            <Route path="/purchase/rpo" element={<RpoList />} />
+            <Route path="/purchase/rpo/:trno" element={<RpoDetail />} />
+            <Route path="/purchase/vendor" element={<Vendor />} />
             {/* Report */}
             <Route path="/report" element={<ReportExportPage/>} />
             <Route path="/report/database" element={<DbBrowserPage />} />

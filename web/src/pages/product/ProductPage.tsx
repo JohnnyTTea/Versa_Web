@@ -14,14 +14,9 @@ type Onhand = { onhand1?: any; onhand2?: any; onhand3?: any };
 function formatDate(v: any): string {
   if (!v) return "";
   const d = new Date(v);
-  if (!Number.isNaN(d.getTime())) {
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
-      d.getHours()
-    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  }
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   const s = String(v).trim();
-  return s.replace("T", " ").replace(/\.?\d*Z$/, "").trim();
+  return s.replace("T", " ").replace(/\.?\d*Z$/, "").trim().slice(0, 10);
 }
 
 function formatDateOnly(v: any): string {
@@ -68,6 +63,9 @@ export default function ProductPage() {
   const [lastCost, setLastCost] = useState<number | null>(null);
   const [Apirate, setApirate] = useState<number | null>(null);
   const [shippingDate, setShippingDate] = useState<string | null>(null);
+  const [returnPct, setReturnPct] = useState<number | null>(null);
+  const [caPct, setCaPct] = useState<number | null>(null);
+  const [gaPct, setGaPct] = useState<number | null>(null);
 
   function renderBox(value: any, format?: (v: any) => string) {
     const raw = typeof value === "string" ? value.trim() : value;
@@ -95,6 +93,9 @@ export default function ProductPage() {
         setLastCost(null);
         setApirate(null);
         setShippingDate(null);
+        setReturnPct(null);
+        setCaPct(null);
+        setGaPct(null);
         return;
       }
 
@@ -102,10 +103,15 @@ export default function ProductPage() {
         setMessage("");
 
         // --- summary ---
-        const sResp = await fetch(
+        const summaryPromise = fetch(
           `/api/products/summary?id=${encodeURIComponent(id)}`,
           { credentials: "include" },
         );
+        const onOrderPromise = isProductRoot
+          ? fetch(`/api/products/on-order?id=${encodeURIComponent(id)}`, { credentials: "include" })
+          : null;
+
+        const sResp = await summaryPromise;
         const sJson = await sResp.json();
         console.log("summary resp =", sJson);
 
@@ -123,6 +129,9 @@ export default function ProductPage() {
           setLastCost(null);
           setApirate(null);
           setShippingDate(null);
+          setReturnPct(null);
+          setCaPct(null);
+          setGaPct(null);
         } else {
           setProduct(sJson.product || null);
           setOnhand(sJson.onhand || null);
@@ -143,15 +152,19 @@ export default function ProductPage() {
           const costN = Number(sJson?.product?.Cost);
           setLastCost(Number.isFinite(costN) ? costN : null);
 
-          setHistoryLoading(true);
+          const rmaReturn = Number(sJson?.rma?.returnPct);
+          setReturnPct(Number.isFinite(rmaReturn) ? rmaReturn : null);
+          const rmaCa = Number(sJson?.rma?.caPct);
+          setCaPct(Number.isFinite(rmaCa) ? rmaCa : null);
+          const rmaGa = Number(sJson?.rma?.gaPct);
+          setGaPct(Number.isFinite(rmaGa) ? rmaGa : null);
+
+          setHistoryLoading(!!onOrderPromise);
         }
 
         // --- on-order (sales history) ---
-        if (sResp.ok && sJson?.ok) {
-          const oResp = await fetch(
-            `/api/products/on-order?id=${encodeURIComponent(id)}`,
-            { credentials: "include" },
-          );
+        if (sResp.ok && sJson?.ok && onOrderPromise) {
+          const oResp = await onOrderPromise;
           const oJson = await oResp.json();
           console.log("on-order resp =", oJson);
 
@@ -164,6 +177,10 @@ export default function ProductPage() {
             setOrders(Array.isArray(oJson.orders) ? oJson.orders : []);
             setTransit(Array.isArray(oJson.transit) ? oJson.transit : []);
           }
+          setHistoryLoading(false);
+        } else if (!onOrderPromise) {
+          setOrders([]);
+          setTransit([]);
           setHistoryLoading(false);
         }
       } catch (e: any) {
@@ -179,6 +196,9 @@ export default function ProductPage() {
         setLastCost(null);
         setApirate(null);
         setShippingDate(null);
+        setReturnPct(null);
+        setCaPct(null);
+        setGaPct(null);
       }
     }
 
@@ -186,7 +206,7 @@ export default function ProductPage() {
     return () => {
       cancelled = true;
     };
-  }, [itemId]);
+  }, [itemId, isProductRoot]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -262,7 +282,7 @@ export default function ProductPage() {
           </div>
           <div className="product-field">Handled By:</div>
           <div className="product-field">
-            Return(%): {renderBox(product?.item)}
+            Return(%): {renderBox(returnPct, (v) => `${Number(v).toFixed(2)}%`)}
           </div>
         </div>
 
@@ -285,7 +305,7 @@ export default function ProductPage() {
             Vend.ID: {renderBox(product?.Vendno)}
           </div>
           <div className="product-field">
-            CA (%): {renderBox("")}
+            CA (%): {renderBox(caPct, (v) => `${Number(v).toFixed(2)}%`)}
           </div>
         </div>
 
@@ -308,7 +328,7 @@ export default function ProductPage() {
             Created Date: {renderBox(formatDateOnly(product?.Redate ?? ""))}
           </div>
           <div className="product-field">
-            GA (%): {renderBox("")}
+            GA (%): {renderBox(gaPct, (v) => `${Number(v).toFixed(2)}%`)}
           </div>
         </div>
 

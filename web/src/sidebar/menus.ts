@@ -38,7 +38,13 @@ export const moduleMenus: Record<ModuleKey, SidebarItem[]> = {
     { label: "Invoice", to: "/sales/invoice" }, // Sales/Invoice.tsx (invoice.php)
   ],
 
-  purchase: [{ label: "Purchase", to: "/purchase", end: true }],
+  purchase: [
+    { label: "FPO", to: "/purchase", end: true },
+    { label: "FPO Upload", to: "/purchase/fpo/upload" },
+    { label: "OPO", to: "/purchase/opo" },
+    { label: "RPO", to: "/purchase/rpo" },
+    { label: "Vendor", to: "/purchase/vendor" },
+  ],
   dto: [{ label: "DTO", to: "/dto", end: true }],
   modify: [{ label: "Modify", to: "/modify", end: true }],
   report: [

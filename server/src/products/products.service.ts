@@ -8,6 +8,28 @@ const AIS_CUTOVER_DATE = '2026-01-01';
 @Injectable()
 export class ProductsService {
   constructor(private readonly db: MysqlService) {}
+
+  private monthRange(n = 13) {
+    const now = new Date();
+    const end = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+    const start = new Date(Date.UTC(now.getFullYear(), now.getMonth() - (n - 1), 1));
+    return {
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+    };
+  }
+
+  // 过去 13 个月，不含当月（与 whse 报表窗口一致）
+  private monthRangeExcludeCurrent(n = 13) {
+    const now = new Date();
+    const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1));
+    const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - n, 1));
+    return {
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+    };
+  }
+
   // ---------- summary (sidebar.php) ----------
   async getSummary(itemId: string) {
     // 产品主数据
@@ -20,89 +42,207 @@ export class ProductsService {
 
     let message = '';
     if (!product) message = 'Error: Item ID does not exist !';
+    if (!product) {
+      return {
+        ok: false,
+        message,
+        product: null,
+        onhand: { onhand1: 0, onhand2: 0, onhand3: 0 },
+        rma: { totalSale: 0, totalReturn: 0, returnPct: 0, caPct: 0, gaPct: 0 },
+        prices: { ebay: null, amzn: null, shipping52: null },
+      };
+    }
 
-    // onhand 汇总
-    const onhandRows = await this.db.query(
-      'aisdata0',
-      `
-      SELECT
-        SUM(CASE WHEN Whse = 1 THEN Onhand ELSE 0 END) AS onhand1,
-        SUM(CASE WHEN Whse = 2 THEN Onhand ELSE 0 END) AS onhand2,
-        SUM(CASE WHEN Whse = 3 THEN Onhand ELSE 0 END) AS onhand3
-      FROM itemwhse
-      WHERE Itemno = ?;
-      `,
-      [itemId],
-    );
+    const [onhandRows, ebayRows, amznRows, shippingRows] = await Promise.all([
+      this.db.query(
+        'aisdata0',
+        `
+        SELECT
+          SUM(CASE WHEN Whse = 1 THEN Onhand ELSE 0 END) AS onhand1,
+          SUM(CASE WHEN Whse = 2 THEN Onhand ELSE 0 END) AS onhand2,
+          SUM(CASE WHEN Whse = 3 THEN Onhand ELSE 0 END) AS onhand3
+        FROM itemwhse
+        WHERE Itemno = ?;
+        `,
+        [itemId],
+      ),
+      this.db.query(
+        'aisdata0',
+        `
+        SELECT t.Trdate, t.Itemno, t.Price, t.Trorig1
+        FROM (
+          SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
+          FROM aisdata1.sainvl AS l
+          LEFT JOIN aisdata1.sainv AS v ON l.Trno = v.Trno
+          WHERE l.Itemno = ?
+            AND v.Trorig1='EBAY'
+            AND l.Trdate >= ?
+          UNION ALL
+          SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
+          FROM aisdata5.sainvl AS l
+          LEFT JOIN aisdata5.sainv AS v ON l.Trno = v.Trno
+          WHERE l.Itemno = ?
+            AND v.Trorig1='EBAY'
+            AND l.Trdate < ?
+        ) AS t
+        ORDER BY t.Trdate DESC
+        LIMIT 1;
+        `,
+        [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE],
+      ),
+      this.db.query(
+        'aisdata0',
+        `
+        SELECT t.Trdate, t.Itemno, t.Price, t.Trorig1
+        FROM (
+          SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
+          FROM aisdata1.sainvl AS l
+          LEFT JOIN aisdata1.sainv AS v ON l.Trno = v.Trno
+          WHERE l.Itemno = ?
+            AND v.Trorig1='AMZN'
+            AND l.Trdate >= ?
+          UNION ALL
+          SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
+          FROM aisdata5.sainvl AS l
+          LEFT JOIN aisdata5.sainv AS v ON l.Trno = v.Trno
+          WHERE l.Itemno = ?
+            AND v.Trorig1='AMZN'
+            AND l.Trdate < ?
+        ) AS t
+        ORDER BY t.Trdate DESC
+        LIMIT 1;
+        `,
+        [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE],
+      ),
+      this.db.query(
+        'aisdatax',
+        `SELECT Apirate,ItemsTotalCost, AddedDate FROM ilsorders WHERE Skus = ? LIMIT 1`,
+        [itemId],
+      ),
+    ]);
+
     const onhand = Array.isArray(onhandRows) ? onhandRows[0] : null;
-
-    // eBay 最近成交价
-    const ebayRows = await this.db.query(
-      'aisdata0',
-      `
-      SELECT t.Trdate, t.Itemno, t.Price, t.Trorig1
-      FROM (
-        SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
-        FROM aisdata1.sainvl AS l
-        LEFT JOIN aisdata1.sainv AS v ON l.Trno = v.Trno
-        WHERE l.Itemno = ?
-          AND v.Trorig1='EBAY'
-          AND l.Trdate >= ?
-        UNION ALL
-        SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
-        FROM aisdata5.sainvl AS l
-        LEFT JOIN aisdata5.sainv AS v ON l.Trno = v.Trno
-        WHERE l.Itemno = ?
-          AND v.Trorig1='EBAY'
-          AND l.Trdate < ?
-      ) AS t
-      ORDER BY t.Trdate DESC
-      LIMIT 1;
-      `,
-      [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE],
-    );
     const ebay = Array.isArray(ebayRows) ? ebayRows[0] : null;
-
-    // AMZN 最近成交价
-    const amznRows = await this.db.query(
-      'aisdata0',
-      `
-      SELECT t.Trdate, t.Itemno, t.Price, t.Trorig1
-      FROM (
-        SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
-        FROM aisdata1.sainvl AS l
-        LEFT JOIN aisdata1.sainv AS v ON l.Trno = v.Trno
-        WHERE l.Itemno = ?
-          AND v.Trorig1='AMZN'
-          AND l.Trdate >= ?
-        UNION ALL
-        SELECT l.Trdate, l.Itemno, l.Price, v.Trorig1
-        FROM aisdata5.sainvl AS l
-        LEFT JOIN aisdata5.sainv AS v ON l.Trno = v.Trno
-        WHERE l.Itemno = ?
-          AND v.Trorig1='AMZN'
-          AND l.Trdate < ?
-      ) AS t
-      ORDER BY t.Trdate DESC
-      LIMIT 1;
-      `,
-      [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE],
-    );
     const amzn = Array.isArray(amznRows) ? amznRows[0] : null;
-
-    // 52 shipping
-    const shippingRows = await this.db.query(
-      'aisdatax',
-      `SELECT Apirate,ItemsTotalCost, AddedDate FROM ilsorders WHERE Skus = ? LIMIT 1`,
-      [itemId],
-    );
     const shipping52 = Array.isArray(shippingRows) ? shippingRows[0] : null;
+
+    // Return(%)：沿用 RMA 算法（aisdata5，最近 13 个月）
+    // 注意：即使统计失败，也不能影响 summary 主接口
+    let totalSale = 0;
+    let totalReturn = 0;
+    try {
+      const { startDate, endDate } = this.monthRange(13);
+      const [saleCountRows, returnCountRows] = await Promise.all([
+        this.db.query(
+          'aisdata5',
+          `
+          SELECT COUNT(*) AS totalSale
+          FROM sainvl
+          WHERE Itemno = ?
+            AND Trdate > ?
+            AND Trdate < ?
+          `,
+          [itemId, startDate, endDate],
+        ),
+        this.db.query(
+          'aisdata5',
+          `
+          SELECT
+            COUNT(*) AS totalReturn
+          FROM samemo m
+          JOIN sainvl l ON m.Invno = l.Trno
+          WHERE l.Itemno = ?
+            AND m.Trdate > ?
+            AND m.Trdate < ?
+          `,
+          [itemId, startDate, endDate],
+        ),
+      ]);
+
+      totalSale = Number((Array.isArray(saleCountRows) ? saleCountRows[0]?.totalSale : 0) || 0);
+      totalReturn = Number((Array.isArray(returnCountRows) ? returnCountRows[0]?.totalReturn : 0) || 0);
+    } catch {
+      totalSale = 0;
+      totalReturn = 0;
+    }
+
+    // CA(%)/GA(%)：集合口径（West/East）+ Ordqty / All
+    let caPct = 0;
+    let gaPct = 0;
+    try {
+      const { startDate, endDate } = this.monthRangeExcludeCurrent(13);
+      const whseRows = await this.db.query(
+        'aisdata0',
+        `
+        SELECT
+          SUM(
+            CASE
+              WHEN t.Sstate IN ('WA','OR','ID','CA','NV','UT','AZ','AK','HI','MT','WY','CO','NM','ND','SD','NE','KS','OK','TX')
+                AND t.Ordqty > 0
+              THEN t.Ordqty ELSE 0
+            END
+          ) AS caQty,
+          SUM(
+            CASE
+              WHEN t.Sstate IN ('MN','IA','MO','WI','IL','MI','IN','OH','MA','VT','ME','NH','RI','CT','NJ','DE','NY','PA','MD','WV','KY','VA','AR','LA','MS','TN','AL','NC','SC','GA','FL')
+                AND t.Ordqty > 0
+              THEN t.Ordqty ELSE 0
+            END
+          ) AS gaQty,
+          SUM(CASE WHEN t.Ordqty > 0 THEN t.Ordqty ELSE 0 END) AS allQty
+        FROM (
+          SELECT l.Ordqty, v.Sstate, l.Trdate
+          FROM aisdata1.sainvl l
+          JOIN aisdata1.sainv v ON v.Trno = l.Trno
+          WHERE l.Itemno = ?
+            AND l.Trdate >= ?
+            AND l.Trdate < ?
+            AND l.Trdate >= ?
+          UNION ALL
+          SELECT l.Ordqty, v.Sstate, l.Trdate
+          FROM aisdata5.sainvl l
+          JOIN aisdata5.sainv v ON v.Trno = l.Trno
+          WHERE l.Itemno = ?
+            AND l.Trdate >= ?
+            AND l.Trdate < ?
+            AND l.Trdate < ?
+        ) t
+        `,
+        [
+          itemId,
+          startDate,
+          endDate,
+          AIS_CUTOVER_DATE,
+          itemId,
+          startDate,
+          endDate,
+          AIS_CUTOVER_DATE,
+        ],
+      );
+      const caQty = Number((Array.isArray(whseRows) ? whseRows[0]?.caQty : 0) || 0);
+      const gaQty = Number((Array.isArray(whseRows) ? whseRows[0]?.gaQty : 0) || 0);
+      const allQty = Number((Array.isArray(whseRows) ? whseRows[0]?.allQty : 0) || 0);
+      caPct = allQty > 0 ? (caQty * 100) / allQty : 0;
+      gaPct = allQty > 0 ? (gaQty * 100) / allQty : 0;
+    } catch {
+      caPct = 0;
+      gaPct = 0;
+    }
+
+    const returnPct = totalSale > 0 ? (totalReturn * 100) / totalSale : 0;
 
     return {
       ok: !!product,
       message,
       product: product || null,
       onhand: onhand || { onhand1: 0, onhand2: 0, onhand3: 0 },
+      rma: {
+        totalSale,
+        totalReturn,
+        returnPct: Number(returnPct.toFixed(2)),
+        caPct: Number(caPct.toFixed(2)),
+        gaPct: Number(gaPct.toFixed(2)),
+      },
       prices: {
         ebay: ebay || null,
         amzn: amzn || null,
@@ -113,26 +253,17 @@ export class ProductsService {
 
   // ---------- index.php: on-order ----------
   async getOnOrder(itemId: string) {
-    // PHP: FROM aisdata1.poordl d LEFT JOIN aisdata1.poord p ...
+    // 只取 aisdata1.poordl
     const orders = await this.db.query(
-      'aisdata0',
+      'aisdata1',
       `
-      SELECT t.*
-      FROM (
-        SELECT d.*, p.Sstate
-        FROM aisdata1.poordl d
-        LEFT JOIN aisdata1.poord p ON d.Trno = p.Trno
-        WHERE d.Itemno = ?
-          AND p.Trdate >= ?
-        UNION ALL
-        SELECT d.*, p.Sstate
-        FROM aisdata5.poordl d
-        LEFT JOIN aisdata5.poord p ON d.Trno = p.Trno
-        WHERE d.Itemno = ?
-          AND p.Trdate < ?
-      ) AS t
+      SELECT d.*, p.Sstate
+      FROM aisdata1.poordl d
+      LEFT JOIN aisdata1.poord p ON d.Trno = p.Trno
+      WHERE d.Itemno = ?
+      ORDER BY d.Opodate DESC, d.Opono DESC
       `,
-      [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE],
+      [itemId],
     );
 
     // 你 PHP 里 transit 目前是空数组
