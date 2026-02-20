@@ -31,8 +31,8 @@ export class ProductsService {
   }
 
   // ---------- summary (sidebar.php) ----------
-  async getSummary(itemId: string) {
-    // 产品主数据
+  private async getSummaryBasicCore(itemId: string) {
+    // 产品主数据（最高优先级）
     const productRows = await this.db.query(
       'aisdata0',
       `SELECT * FROM item WHERE itemno = ? LIMIT 1`,
@@ -48,12 +48,10 @@ export class ProductsService {
         message,
         product: null,
         onhand: { onhand1: 0, onhand2: 0, onhand3: 0 },
-        rma: { totalSale: 0, totalReturn: 0, returnPct: 0, caPct: 0, gaPct: 0 },
-        prices: { ebay: null, amzn: null, shipping52: null },
       };
     }
 
-    const [onhandRows, ebayRows, amznRows, shippingRows] = await Promise.all([
+    const [onhandRows] = await Promise.all([
       this.db.query(
         'aisdata0',
         `
@@ -66,6 +64,20 @@ export class ProductsService {
         `,
         [itemId],
       ),
+    ]);
+
+    const onhand = Array.isArray(onhandRows) ? onhandRows[0] : null;
+
+    return {
+      ok: !!product,
+      message,
+      product: product || null,
+      onhand: onhand || { onhand1: 0, onhand2: 0, onhand3: 0 },
+    };
+  }
+
+  async getSummaryPrices(itemId: string) {
+    const [ebayRows, amznRows, shippingRows] = await Promise.all([
       this.db.query(
         'aisdata0',
         `
@@ -121,13 +133,22 @@ export class ProductsService {
       ),
     ]);
 
-    const onhand = Array.isArray(onhandRows) ? onhandRows[0] : null;
     const ebay = Array.isArray(ebayRows) ? ebayRows[0] : null;
     const amzn = Array.isArray(amznRows) ? amznRows[0] : null;
     const shipping52 = Array.isArray(shippingRows) ? shippingRows[0] : null;
 
+    return {
+      ok: true,
+      prices: {
+        ebay: ebay || null,
+        amzn: amzn || null,
+        shipping52: shipping52 || null,
+      },
+    };
+  }
+
+  private async getRmaWhseStats(itemId: string) {
     // Return(%)：沿用 RMA 算法（aisdata5，最近 13 个月）
-    // 注意：即使统计失败，也不能影响 summary 主接口
     let totalSale = 0;
     let totalReturn = 0;
     try {
@@ -229,26 +250,51 @@ export class ProductsService {
       gaPct = 0;
     }
 
-    const returnPct = totalSale > 0 ? (totalReturn * 100) / totalSale : 0;
-
     return {
-      ok: !!product,
-      message,
-      product: product || null,
-      onhand: onhand || { onhand1: 0, onhand2: 0, onhand3: 0 },
       rma: {
         totalSale,
         totalReturn,
-        returnPct: Number(returnPct.toFixed(2)),
+        returnPct: Number((totalSale > 0 ? (totalReturn * 100) / totalSale : 0).toFixed(2)),
         caPct: Number(caPct.toFixed(2)),
         gaPct: Number(gaPct.toFixed(2)),
       },
-      prices: {
-        ebay: ebay || null,
-        amzn: amzn || null,
-        shipping52: shipping52 || null,
-      },
     };
+  }
+
+  // 兼容旧接口：仍返回完整数据
+  async getSummary(itemId: string) {
+    const core = await this.getSummaryBasicCore(itemId);
+    if (!core.ok) {
+      return {
+        ...core,
+        prices: { ebay: null, amzn: null, shipping52: null },
+        rma: { totalSale: 0, totalReturn: 0, returnPct: 0, caPct: 0, gaPct: 0 },
+      };
+    }
+    const [prices, metrics] = await Promise.all([
+      this.getSummaryPrices(itemId),
+      this.getRmaWhseStats(itemId),
+    ]);
+    return { ...core, ...prices, ...metrics };
+  }
+
+  // 新：快速摘要（给前端首屏）
+  async getSummaryBasic(itemId: string) {
+    return this.getSummaryBasicCore(itemId);
+  }
+
+  // 新：慢指标（RMA/CA/GA）
+  async getSummaryMetrics(itemId: string) {
+    const core = await this.getSummaryBasicCore(itemId);
+    if (!core.ok) {
+      return {
+        ok: false,
+        message: core.message || 'Missing item',
+        rma: { totalSale: 0, totalReturn: 0, returnPct: 0, caPct: 0, gaPct: 0 },
+      };
+    }
+    const metrics = await this.getRmaWhseStats(itemId);
+    return { ok: true, ...metrics };
   }
 
   // ---------- index.php: on-order ----------

@@ -1,6 +1,7 @@
 import { NavLink, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { moduleMenus } from "./menus";
 import { useSidebar } from "./SidebarContext";
+import { trackUserEvent } from "../utils/userLog";
 import "../styles/sidebar.css";
 
 export default function Sidebar() {
@@ -94,6 +95,14 @@ export default function Sidebar() {
                   <NavLink
                     to={to}
                     end={it.end}
+                    onClick={() =>
+                      trackUserEvent({
+                        event: `Sidebar Menu: ${it.label}`,
+                        module: activeModule || "unknown",
+                        action: "submenu_click",
+                        target: to,
+                      })
+                    }
                     className={({ isActive }) =>
                       isActive || purchaseDetail?.parent === it.to ? "active" : ""
                     }
@@ -114,7 +123,7 @@ export default function Sidebar() {
             })}
           </ul>
         ) : (
-          <div style={{ opacity: 0.6, marginTop: 8 }} className="sidebar-label">
+          <div style={{ opacity: 0.6, marginTop: 8 }} className="sidebar-submenu">
             进入某个模块后显示菜单
           </div>
         )}

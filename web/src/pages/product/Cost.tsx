@@ -1,5 +1,6 @@
 import  { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { getProductCache, setProductCache } from "./productCache";
 
 type PurchaseRow = {
   Trdate: any;
@@ -26,7 +27,13 @@ function toNumber(v: any): number | null {
 
 function money(v: any, digits = 2): string {
   const n = toNumber(v);
-  return n === null ? "" : `$${n.toFixed(digits)}`;
+  if (n === null) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(n);
 }
 
 function formatDate(v: any): string {
@@ -67,6 +74,10 @@ export default function ProductCost() {
     }
 
     const controller = new AbortController();
+    const cached = getProductCache<PurchaseHistoryResp>(itemId, "purchase-history");
+    if (cached?.ok && Array.isArray(cached.rows)) {
+      setRows(cached.rows);
+    }
 
     const run = async () => {
       setLoading(true);
@@ -79,6 +90,7 @@ export default function ProductCost() {
 
         if (!data?.ok) throw new Error(data?.message || "Load failed");
         setRows(Array.isArray(data.rows) ? data.rows : []);
+        setProductCache(itemId, "purchase-history", data);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setErr(String(e?.message || e || "Unknown error"));

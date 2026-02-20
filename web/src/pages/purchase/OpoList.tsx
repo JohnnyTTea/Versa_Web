@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "../../styles/purchase.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type OpoRow = {
   Opono: any;
@@ -120,7 +121,23 @@ export default function OpoList() {
       label: "OPO No.",
       render: (row) => {
         const opono = row.Opono ?? "";
-        return opono ? <Link to={`/purchase/opo/${opono}`}>{opono}</Link> : "";
+        return opono ? (
+          <Link
+            to={`/purchase/opo/${opono}`}
+            onClick={() =>
+              trackUserEvent({
+                event: `Purchase OPO Click: ${opono}`,
+                module: "purchase",
+                action: "open_opo",
+                target: String(opono),
+              })
+            }
+          >
+            {opono}
+          </Link>
+        ) : (
+          ""
+        );
       },
     },
     { key: "Opodate", label: "OPO Date", render: (row) => formatDate(row.Opodate) },

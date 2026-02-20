@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import "../../styles/purchase.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type RpoRow = {
   Trno: any;
@@ -100,7 +101,23 @@ export default function RpoList() {
       label: "RPO No.",
       render: (row) => {
         const trno = row.Trno ?? "";
-        return trno ? <Link to={`/purchase/rpo/${trno}`}>{trno}</Link> : "";
+        return trno ? (
+          <Link
+            to={`/purchase/rpo/${trno}`}
+            onClick={() =>
+              trackUserEvent({
+                event: `Purchase RPO Click: ${trno}`,
+                module: "purchase",
+                action: "open_rpo",
+                target: String(trno),
+              })
+            }
+          >
+            {trno}
+          </Link>
+        ) : (
+          ""
+        );
       },
     },
     { key: "Trdate", label: "RPO Date", render: (row) => formatDate(row.Trdate) },

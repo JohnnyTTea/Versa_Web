@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "../../styles/Modify.css";
 import "../../styles/report.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type ActionKey = "Other Charge Remove(IKON)" | "Other Charge Remove(MD)" | string;
 
@@ -166,6 +167,12 @@ export default function ModifyPage() {
     if (!payloadBase) return;
 
     const payload = { ...payloadBase, dry_run: !!dryRun };
+    trackUserEvent({
+      event: `Modify Execute: ${payload.action} (${dryRun ? "dry-run" : "write"}) ${payload.start_date}~${payload.end_date}`,
+      module: "modify",
+      action: dryRun ? "dry_run" : "execute",
+      target: payload.action,
+    });
 
     setStatusText(dryRun ? "⏳ 正在预演，请稍候..." : "⏳ 正在执行修改，请稍候...");
     setLoading(true);

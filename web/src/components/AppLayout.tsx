@@ -9,6 +9,8 @@ import type { ModuleKey } from "../sidebar/menus";
 import "../styles/layout.css";
 
 async function logUserActivity(path: string) {
+  const p = (path || "").trim();
+  if (!p || p === "/" || p.startsWith("/settings/log")) return;
   try {
     await fetch("/api/log", {
       method: "POST",

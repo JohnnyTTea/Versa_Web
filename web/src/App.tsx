@@ -35,6 +35,7 @@ import DbBrowserPage from "./pages/reports/DbBrowserPage";
 // Settings Page
 import Roles from "./pages/settings/Roles";
 import Users from "./pages/settings/Users";
+import UserLog from "./pages/settings/UserLog";
 
 function ProtectedLayout() {
   return (
@@ -87,6 +88,7 @@ export default function App() {
             {/* Settings */}
             <Route path="/settings" element={<Users />} />
             <Route path="/settings/roles" element={<Roles />} />
+            <Route path="/settings/log" element={<UserLog />} />
             {/* 兜底：所有未知路径回首页 */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

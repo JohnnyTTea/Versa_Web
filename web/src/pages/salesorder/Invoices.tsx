@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/sales.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type SearchType = "invoice" | "order" | "cpo" | "shipping";
 type Head = Record<string, any>;
@@ -98,6 +99,12 @@ export default function Invoice() {
   }, [keyword, urlType]);
 
   async function fetchInvoice(t: SearchType, id: string) {
+    trackUserEvent({
+      event: `Sales Invoice Search: type=${t}, id=${id}`,
+      module: "sales",
+      action: "search_invoice",
+      target: id,
+    });
     setLoading(true);
     try {
       const qs = new URLSearchParams();
@@ -177,6 +184,12 @@ export default function Invoice() {
                 next.set("type", "invoice");
                 next.set("id", inv);
                 nav(`/sales/invoice?${next.toString()}`);
+                trackUserEvent({
+                  event: `Sales Invoice Matched Click: ${inv}`,
+                  module: "sales",
+                  action: "matched_invoice_click",
+                  target: inv,
+                });
               }}
             >
               {inv}

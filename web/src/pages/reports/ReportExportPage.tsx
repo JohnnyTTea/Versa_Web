@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import "../../styles/report.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type ReportKey =
   | "AIS SLS Report"
@@ -68,6 +69,12 @@ export default function ReportExportPage() {
       return;
     }
     const name = exportName.trim() || defaultFileName(selected);
+    trackUserEvent({
+      event: `Report Download: ${selected} as ${name}`,
+      module: "report",
+      action: "download",
+      target: selected,
+    });
 
     setLoading(true);
     setStatus("⏳ 正在生成报表，请稍候...");

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { LogService } from './log.service';
 
@@ -22,8 +22,43 @@ function normalizePathToLastTwo(path: string): string {
 export class LogController {
   constructor(private readonly logService: LogService) {}
 
+  @Get('log/list')
+  async list(
+    @Req() req: Request,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('username') username?: string,
+    @Query('keyword') keyword?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const sess: any = (req as any).session;
+    const me = (sess?.username || '').trim();
+    if (!me) return { ok: false, message: 'Unauthorized', rows: [] };
+
+    return this.logService.listLogs({
+      page: Number(page || 1),
+      pageSize: Number(pageSize || 50),
+      username: (username || '').trim() || undefined,
+      keyword: (keyword || '').trim() || undefined,
+      startDate: (startDate || '').trim() || undefined,
+      endDate: (endDate || '').trim() || undefined,
+    });
+  }
+
   @Post('log')
-  async log(@Req() req: Request, @Body() body: { event?: string; path?: string } = {}) {
+  async log(
+    @Req() req: Request,
+    @Body()
+    body: {
+      event?: string;
+      path?: string;
+      module?: string;
+      action?: string;
+      target?: string;
+      meta?: Record<string, any>;
+    } = {},
+  ) {
     const sess: any = (req as any).session;
     const username = sess?.username;
 
@@ -32,17 +67,23 @@ export class LogController {
 
     // 2) 获取 path/event（前端可传 path，不传就用 referer）
   const ip = getClientIp(req);
-  if (ip === '192.168.16.130') return { ok: true, skipped: 'ip' };
   const rawPath = body?.path || (req.headers.referer as string) || req.originalUrl || '';
   const path = normalizePathToLastTwo(rawPath);
 
-  // event 优先用自定义，否则用 path；附带 method 方便审计
-  const method = req.method;
+  // event 优先用自定义，否则用 path
   const baseEvent = body?.event || path || rawPath || 'unknown';
-  const event = `[${method}] ${baseEvent}`.slice(0, 1000);
+  const event = String(baseEvent).slice(0, 1000);
 
     // 6) 写入数据库
-    await this.logService.writeLog(username, ip, event);
+    await this.logService.writeEvent({
+      username,
+      ip,
+      event,
+      module: body?.module,
+      action: body?.action,
+      target: body?.target,
+      meta: body?.meta || null,
+    });
 
     return { ok: true };
   }

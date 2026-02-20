@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import "../../styles/DTO.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type UploadResult = {
   success: boolean;
@@ -91,6 +92,13 @@ export default function DtoPage() {
     const input = (e.currentTarget.elements.namedItem("csvFile") as HTMLInputElement) || null;
     const file = input?.files?.[0];
     if (!file) return;
+    trackUserEvent({
+      event: `DTO Upload: ${file.name}`,
+      module: "dto",
+      action: "upload_csv",
+      target: file.name,
+      meta: { size: file.size },
+    });
 
     try {
       const data = await apiUploadCsv(file);
@@ -111,6 +119,11 @@ export default function DtoPage() {
 
   function handleModify() {
     if (!canModify) return;
+    trackUserEvent({
+      event: "DTO Enter Edit",
+      module: "dto",
+      action: "enter_edit",
+    });
     setMode("edit");
   }
 
@@ -130,6 +143,12 @@ export default function DtoPage() {
       const payload = await apiSaveTable(currentTable);
 
       if (payload && payload.status === "ok" && payload.download_url) {
+        trackUserEvent({
+          event: `DTO Save & Download: ${payload.download_url}`,
+          module: "dto",
+          action: "save_download",
+          target: payload.download_url,
+        });
         // 自动下载
         const a = document.createElement("a");
         a.href = payload.download_url;

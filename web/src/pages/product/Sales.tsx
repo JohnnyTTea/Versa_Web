@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { getProductCache, setProductCache } from "./productCache";
 
 type SalesRow = {
   Trdate: any;
@@ -41,7 +42,13 @@ function toNumber(v: any): number | null {
 
 function money(v: any, digits = 2): string {
   const n = toNumber(v);
-  return n === null ? "" : `$${n.toFixed(digits)}`;
+  if (n === null) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(n);
 }
 
 async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
@@ -109,6 +116,20 @@ export default function ProductSales() {
     }
 
     const controller = new AbortController();
+    const isDefaultQuery =
+      page === 1 &&
+      limit === 50 &&
+      (sort || "Trdate") === "Trdate" &&
+      (order || "desc").toLowerCase() === "desc";
+
+    if (isDefaultQuery) {
+      const cached = getProductCache<SalesHistoryResp>(itemId, "sales-history-default");
+      if (cached?.ok && Array.isArray(cached.rows)) {
+        setRows(cached.rows);
+        setPages(Number.isFinite(Number(cached.pages)) ? Number(cached.pages) : 1);
+        setTotal(Number.isFinite(Number(cached.total)) ? Number(cached.total) : 0);
+      }
+    }
 
     const run = async () => {
       setLoading(true);
@@ -135,6 +156,7 @@ export default function ProductSales() {
         setRows(Array.isArray(data.rows) ? data.rows : []);
         setPages(Number.isFinite(Number(data.pages)) ? Number(data.pages) : 1);
         setTotal(Number.isFinite(Number(data.total)) ? Number(data.total) : 0);
+        if (isDefaultQuery) setProductCache(itemId, "sales-history-default", data);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setErr(String(e?.message || e || "Unknown error"));

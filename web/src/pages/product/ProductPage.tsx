@@ -7,6 +7,8 @@ import {
   useMatch,
 } from "react-router-dom";
 import "../../styles/product.css";
+import { trackUserEvent } from "../../utils/userLog";
+import { setProductCache } from "./productCache";
 
 type Product = Record<string, any>;
 type Onhand = { onhand1?: any; onhand2?: any; onhand3?: any };
@@ -29,12 +31,24 @@ function formatDateOnly(v: any): string {
 
 
 function money(v: number | null | undefined, digits = 2) {
-  return typeof v === "number" && Number.isFinite(v) ? `$${v.toFixed(digits)}` : "";
+  if (typeof v !== "number" || !Number.isFinite(v)) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(v);
 }
 
 function numMoney(v: any, digits = 2) {
   const n = Number(v);
-  return Number.isFinite(n) ? `$${n.toFixed(digits)}` : "";
+  if (!Number.isFinite(n)) return "";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(n);
 }
 
 export default function ProductPage() {
@@ -77,8 +91,20 @@ export default function ProductPage() {
 
   // ====== ✅ itemId 变化就拉后端数据 ======
   useEffect(() => {
+    if (itemId) {
+      trackUserEvent({
+        event: `Product Search SKU: ${itemId}`,
+        module: "product",
+        action: "search",
+        target: itemId,
+      });
+    }
+  }, [itemId]);
+
+  useEffect(() => {
     const id = itemId.trim();
     let cancelled = false;
+    let orderTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function run() {
       if (!id) {
@@ -101,19 +127,13 @@ export default function ProductPage() {
 
       try {
         setMessage("");
+        setHistoryLoading(isProductRoot);
 
-        // --- summary ---
-        const summaryPromise = fetch(
-          `/api/products/summary?id=${encodeURIComponent(id)}`,
-          { credentials: "include" },
-        );
-        const onOrderPromise = isProductRoot
-          ? fetch(`/api/products/on-order?id=${encodeURIComponent(id)}`, { credentials: "include" })
-          : null;
-
-        const sResp = await summaryPromise;
+        // 1) 快速首屏数据：item + onhand（最高优先级）
+        const sResp = await fetch(`/api/products/summary-basic?id=${encodeURIComponent(id)}`, {
+          credentials: "include",
+        });
         const sJson = await sResp.json();
-        console.log("summary resp =", sJson);
 
         if (cancelled) return;
 
@@ -132,57 +152,129 @@ export default function ProductPage() {
           setReturnPct(null);
           setCaPct(null);
           setGaPct(null);
+          setHistoryLoading(false);
+          return;
         } else {
           setProduct(sJson.product || null);
           setOnhand(sJson.onhand || null);
-
-          const ebayP = Number(sJson?.prices?.ebay?.Price);
-          setEbayPrice(Number.isFinite(ebayP) ? ebayP : null);
-
-          const amznP = Number(sJson?.prices?.amzn?.Price);
-          setAmznPrice(Number.isFinite(amznP) ? amznP : null);
-
-          const shipC = Number(sJson?.prices?.shipping52?.Apirate);
-          setApirate(Number.isFinite(shipC) ? shipC : null);
-
-          const shipD = sJson?.prices?.shipping52?.AddedDate;
-          setShippingDate(shipD ? String(shipD).slice(0, 10) : null);
+          setProductCache(id, "summary-basic", sJson);
 
           // 后端目前没有 lastCost 字段，先用 product.Cost 顶一下
           const costN = Number(sJson?.product?.Cost);
           setLastCost(Number.isFinite(costN) ? costN : null);
-
-          const rmaReturn = Number(sJson?.rma?.returnPct);
-          setReturnPct(Number.isFinite(rmaReturn) ? rmaReturn : null);
-          const rmaCa = Number(sJson?.rma?.caPct);
-          setCaPct(Number.isFinite(rmaCa) ? rmaCa : null);
-          const rmaGa = Number(sJson?.rma?.gaPct);
-          setGaPct(Number.isFinite(rmaGa) ? rmaGa : null);
-
-          setHistoryLoading(!!onOrderPromise);
         }
 
-        // --- on-order (sales history) ---
-        if (sResp.ok && sJson?.ok && onOrderPromise) {
-          const oResp = await onOrderPromise;
-          const oJson = await oResp.json();
-          console.log("on-order resp =", oJson);
+        // 2) 价格异步（不阻塞主信息栏）
+        fetch(`/api/products/summary-prices?id=${encodeURIComponent(id)}`, {
+          credentials: "include",
+        })
+          .then((res) => res.json().then((json) => ({ ok: res.ok, json })))
+          .then(({ ok, json }) => {
+            if (cancelled || !ok || !json?.ok) return;
+            setProductCache(id, "summary-prices", json);
+            const ebayP = Number(json?.prices?.ebay?.Price);
+            setEbayPrice(Number.isFinite(ebayP) ? ebayP : null);
+            const amznP = Number(json?.prices?.amzn?.Price);
+            setAmznPrice(Number.isFinite(amznP) ? amznP : null);
+            const shipC = Number(json?.prices?.shipping52?.Apirate);
+            setApirate(Number.isFinite(shipC) ? shipC : null);
+            const shipD = json?.prices?.shipping52?.AddedDate;
+            setShippingDate(shipD ? String(shipD).slice(0, 10) : null);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setEbayPrice(null);
+            setAmznPrice(null);
+            setApirate(null);
+            setShippingDate(null);
+          });
 
-          if (cancelled) return;
+        // 3) 慢指标异步：Return/CA/GA
+        fetch(`/api/products/summary-metrics?id=${encodeURIComponent(id)}`, {
+          credentials: "include",
+        })
+          .then((res) => res.json().then((json) => ({ ok: res.ok, json })))
+          .then(({ ok, json }) => {
+            if (cancelled || !ok || !json?.ok) return;
+            setProductCache(id, "summary-metrics", json);
+            const rmaReturn = Number(json?.rma?.returnPct);
+            const rmaCa = Number(json?.rma?.caPct);
+            const rmaGa = Number(json?.rma?.gaPct);
+            setReturnPct(Number.isFinite(rmaReturn) ? rmaReturn : null);
+            setCaPct(Number.isFinite(rmaCa) ? rmaCa : null);
+            setGaPct(Number.isFinite(rmaGa) ? rmaGa : null);
+          })
+          .catch(() => {
+            if (cancelled) return;
+            setReturnPct(null);
+            setCaPct(null);
+            setGaPct(null);
+          });
 
-          if (!oResp.ok || !oJson?.ok) {
-            setOrders([]);
-            setTransit([]);
-          } else {
-            setOrders(Array.isArray(oJson.orders) ? oJson.orders : []);
-            setTransit(Array.isArray(oJson.transit) ? oJson.transit : []);
-          }
-          setHistoryLoading(false);
-        } else if (!onOrderPromise) {
+        // 4) on-order / on-transit（第二优先级）
+        if (!isProductRoot) {
           setOrders([]);
           setTransit([]);
           setHistoryLoading(false);
+        } else {
+          orderTimer = setTimeout(async () => {
+            try {
+              const oResp = await fetch(`/api/products/on-order?id=${encodeURIComponent(id)}`, {
+                credentials: "include",
+              });
+              const oJson = await oResp.json();
+              if (cancelled) return;
+              if (!oResp.ok || !oJson?.ok) {
+                setOrders([]);
+                setTransit([]);
+              } else {
+                setOrders(Array.isArray(oJson.orders) ? oJson.orders : []);
+                setTransit(Array.isArray(oJson.transit) ? oJson.transit : []);
+                setProductCache(id, "on-order", oJson);
+              }
+            } catch {
+              if (cancelled) return;
+              setOrders([]);
+              setTransit([]);
+            } finally {
+              if (!cancelled) setHistoryLoading(false);
+            }
+          }, 150);
         }
+
+        // 5+) 后台预热：12mo -> cost -> picture -> sales (page1)
+        setTimeout(() => {
+          fetch(`/api/products/sales-12mo?id=${encodeURIComponent(id)}`, { credentials: "include" })
+            .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => {
+              if (ok && j?.ok) setProductCache(id, "sales-12mo", j);
+            })
+            .catch(() => {});
+
+          fetch(`/api/products/purchase-history?id=${encodeURIComponent(id)}`, { credentials: "include" })
+            .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => {
+              if (ok && j?.ok) setProductCache(id, "purchase-history", j);
+            })
+            .catch(() => {});
+
+          fetch(`/api/products/pictures?id=${encodeURIComponent(id)}`, { credentials: "include" })
+            .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => {
+              if (ok && j?.ok) setProductCache(id, "pictures", j);
+            })
+            .catch(() => {});
+
+          fetch(
+            `/api/products/sales-history?id=${encodeURIComponent(id)}&page=1&limit=50&sort=Trdate&order=desc`,
+            { credentials: "include" },
+          )
+            .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+            .then(({ ok, j }) => {
+              if (ok && j?.ok) setProductCache(id, "sales-history-default", j);
+            })
+            .catch(() => {});
+        }, 350);
       } catch (e: any) {
         if (cancelled) return;
         setMessage(e?.message || "Fetch failed");
@@ -205,6 +297,7 @@ export default function ProductPage() {
     run();
     return () => {
       cancelled = true;
+      if (orderTimer) clearTimeout(orderTimer);
     };
   }, [itemId, isProductRoot]);
 

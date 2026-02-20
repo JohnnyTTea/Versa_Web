@@ -41,6 +41,14 @@ type MeApiResp = {
   };
 };
 
+const DEFAULT_NOTICES = [
+  "System maintenance window: Sunday 01:00-03:00.",
+  "Role changes take effect after re-login.",
+  "Use module search for faster navigation.",
+];
+const DEFAULT_NOTICE_TITLE = "Announcements";
+const ANNOUNCEMENTS_URL = `${import.meta.env.BASE_URL}announcements.txt`;
+
 async function fetchMe(): Promise<MeApiResp | null> {
   try {
     const res = await fetch("/api/me", {
@@ -86,6 +94,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [perms, setPerms] = useState<Perms | null>(null);
   const [username, setUsername] = useState("");
+  const [noticeTitle, setNoticeTitle] = useState(DEFAULT_NOTICE_TITLE);
+  const [notices, setNotices] = useState<string[]>(DEFAULT_NOTICES);
 
   useEffect(() => {
     let mounted = true;
@@ -99,6 +109,35 @@ export default function Home() {
 
       setLoading(false);
     });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    fetch(ANNOUNCEMENTS_URL, { cache: "no-store" })
+      .then((res) => {
+        if (!res.ok) throw new Error("failed to load announcements");
+        return res.text();
+      })
+      .then((text) => {
+        if (!mounted) return;
+        const lines = text
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0 && !line.startsWith("#"));
+        const [title, ...items] = lines;
+        setNoticeTitle(title || DEFAULT_NOTICE_TITLE);
+        setNotices(items.length ? items : DEFAULT_NOTICES);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setNoticeTitle(DEFAULT_NOTICE_TITLE);
+        setNotices(DEFAULT_NOTICES);
+      });
 
     return () => {
       mounted = false;
@@ -152,20 +191,31 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="hero-panels">
-          <div className="mini-card">
-            <div className="mini-title">Quick Tip</div>
-            <div className="mini-body">Use the sidebar to jump between modules fast.</div>
+        <div className="hero-side">
+          <div className="notice-card">
+            <div className="notice-title">{noticeTitle}</div>
+            <ul className="notice-list">
+              {notices.map((notice, idx) => (
+                <li key={`${idx}-${notice}`}>{notice}</li>
+              ))}
+            </ul>
           </div>
-          <div className="mini-card">
-            <div className="mini-title">Permissions</div>
-            <div className="mini-body">
-              {perms ? "Role-based access enabled." : "Default access (no perms loaded)."}
+
+          <div className="hero-panels">
+            <div className="mini-card">
+              <div className="mini-title">Quick Tip</div>
+              <div className="mini-body">Use the sidebar to jump between modules fast.</div>
             </div>
-          </div>
-          <div className="mini-card">
-            <div className="mini-title">Status</div>
-            <div className="mini-body">{loading ? "Loading user info..." : "System ready."}</div>
+            <div className="mini-card">
+              <div className="mini-title">Permissions</div>
+              <div className="mini-body">
+                {perms ? "Role-based access enabled." : "Default access (no perms loaded)."}
+              </div>
+            </div>
+            <div className="mini-card">
+              <div className="mini-title">Status</div>
+              <div className="mini-body">{loading ? "Loading user info..." : "System ready."}</div>
+            </div>
           </div>
         </div>
       </section>

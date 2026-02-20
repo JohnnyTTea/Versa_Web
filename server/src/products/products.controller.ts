@@ -14,6 +14,42 @@ export class ProductsController {
     return await this.products.getSummary(itemId);
   }
 
+  // /api/products/summary-basic?id=SKU
+  @Get('summary-basic')
+  async summaryBasic(@Query('id') id?: string) {
+    const itemId = (id || '').trim();
+    if (!itemId) return { ok: false, message: 'Missing id' };
+    return await this.products.getSummaryBasic(itemId);
+  }
+
+  // /api/products/summary-metrics?id=SKU
+  @Get('summary-metrics')
+  async summaryMetrics(@Query('id') id?: string) {
+    const itemId = (id || '').trim();
+    if (!itemId) {
+      return {
+        ok: false,
+        message: 'Missing id',
+        rma: { totalSale: 0, totalReturn: 0, returnPct: 0, caPct: 0, gaPct: 0 },
+      };
+    }
+    return await this.products.getSummaryMetrics(itemId);
+  }
+
+  // /api/products/summary-prices?id=SKU
+  @Get('summary-prices')
+  async summaryPrices(@Query('id') id?: string) {
+    const itemId = (id || '').trim();
+    if (!itemId) {
+      return {
+        ok: false,
+        message: 'Missing id',
+        prices: { ebay: null, amzn: null, shipping52: null },
+      };
+    }
+    return await this.products.getSummaryPrices(itemId);
+  }
+
   // /api/products/on-order?id=SKU
   @Get('on-order')
   async onOrder(@Query('id') id?: string) {

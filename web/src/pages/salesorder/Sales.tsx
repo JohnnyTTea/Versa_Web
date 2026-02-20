@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import "../../styles/sales.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type Order = Record<string, any>;
 type Line = Record<string, any>;
@@ -97,6 +98,12 @@ export default function Sales() {
   }, [orderId]);
 
   async function fetchOrder(id: string) {
+    trackUserEvent({
+      event: `Sales Order Search: ${id}`,
+      module: "sales",
+      action: "search_order",
+      target: id,
+    });
     setLoading(true);
     try {
       const res = await fetch(`/api/sales/order?id=${encodeURIComponent(id)}`, {

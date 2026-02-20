@@ -15,9 +15,44 @@
 
 .home-hero {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(250px, 1.30fr) minmax(300px, 1.05fr);
   gap: 16px;
   margin: 8px 4px 18px;
+}
+
+.hero-side {
+  display: grid;
+  gap: 10px;
+}
+
+.notice-card {
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  animation: riseIn 540ms ease both;
+}
+
+.notice-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #0f172a;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.notice-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #b40c22;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.notice-list li + li {
+  margin-top: 5px;
 }
 
 .hero-card {
@@ -27,6 +62,7 @@
   padding: 24px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(6px);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
   animation: riseIn 500ms ease both;
 }
 
@@ -67,30 +103,41 @@
 
 .hero-panels {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(100px, 1fr));
+  gap: 8px;
 }
 
 .mini-card {
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 14px;
-  padding: 14px 16px;
+  padding: 12px;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
   animation: riseIn 560ms ease both;
+}
+
+.hero-card:hover,
+.notice-card:hover,
+.mini-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(15, 23, 42, 0.2);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
 }
 
 .mini-title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12px;
   color: #0f172a;
   margin-bottom: 6px;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.6px;
 }
 
 .mini-body {
-  font-size: 13px;
+  font-size: 12px;
   color: #475569;
+  line-height: 1.35;
 }
 
 .home-section {
@@ -118,20 +165,26 @@
   padding: 22px 18px;
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.12);
-  text-align: left;
+  text-align: center;
   font-size: 16px;
   font-weight: 600;
   color: #0f172a;
   text-decoration: none;
   border-radius: 14px;
-  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+  transition:
+    transform 190ms cubic-bezier(0.18, 0.89, 0.32, 1.28),
+    box-shadow 220ms ease,
+    border-color 220ms ease;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
-  animation: cardIn 520ms ease both;
+  animation-name: cardIn;
+  animation-duration: 520ms;
+  animation-timing-function: ease;
+  animation-fill-mode: backwards;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
 
 .menu-btn .en {
-  display: inline-block;
+  display: block;
   margin-top: 6px;
   font-size: 12px;
   font-weight: 500;
@@ -139,9 +192,9 @@
 }
 
 .menu-btn:hover {
-  transform: translateY(-3px);
+  transform: translateY(-8px) scale(1.045);
   border-color: rgba(15, 23, 42, 0.2);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 16px 28px rgba(15, 23, 42, 0.15);
 }
 
 /* ✅ 禁用状态（对应你 PHP 的 disabled 样式） */
@@ -185,7 +238,17 @@
     grid-template-columns: 1fr;
   }
 
+  .hero-panels {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
   .menu-grid {
     max-width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .hero-panels {
+    grid-template-columns: 1fr;
   }
 }

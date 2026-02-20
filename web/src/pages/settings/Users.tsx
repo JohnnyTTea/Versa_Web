@@ -1,6 +1,7 @@
 // src/pages/settings/SettingsUsers.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import "../../styles/settings.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type Role = { id: number; role_name: string };
 
@@ -253,6 +254,12 @@ export default function Users() {
       alert(resp.message || "Save failed");
       return;
     }
+    trackUserEvent({
+      event: `Settings User Save: ${u.username}`,
+      module: "settings",
+      action: "user_save",
+      target: u.username,
+    });
 
     await reloadUsers();
 
@@ -284,6 +291,12 @@ export default function Users() {
       alert(resp.message || "Status update failed");
       return;
     }
+    trackUserEvent({
+      event: `Settings User Status: ${u.username} -> ${action}`,
+      module: "settings",
+      action: "user_status",
+      target: u.username,
+    });
     await reloadUsers();
   }
 
@@ -297,6 +310,12 @@ export default function Users() {
       alert(resp.message || "Delete failed");
       return;
     }
+    trackUserEvent({
+      event: `Settings User Delete: ${u.username}`,
+      module: "settings",
+      action: "user_delete",
+      target: u.username,
+    });
     await reloadUsers();
   }
 
@@ -337,6 +356,12 @@ export default function Users() {
       alert(resp.message || "Create failed");
       return;
     }
+    trackUserEvent({
+      event: `Settings User Create: ${newRow.username.trim()}`,
+      module: "settings",
+      action: "user_create",
+      target: newRow.username.trim(),
+    });
 
     const roleId = Number(newRow.role_id);
     const roleName = roles.find((r) => r.id === roleId)?.role_name || "";

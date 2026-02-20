@@ -1,6 +1,7 @@
 // src/pages/settings/SettingsRoles.tsx
 import { useEffect, useMemo, useState } from "react";
 import "../../styles/settings.css";
+import { trackUserEvent } from "../../utils/userLog";
 
 type Me = { username: string; role_name: string };
 
@@ -149,6 +150,12 @@ export default function Roles() {
       alert(resp.message || "Save failed");
       return;
     }
+    trackUserEvent({
+      event: `Settings Role Save: ${r.role_name}`,
+      module: "settings",
+      action: "role_save",
+      target: r.role_name,
+    });
 
     const data = await apiGet<{ roles: RoleRow[] }>("/api/settings/roles");
     setRoles(data.roles || []);
@@ -175,6 +182,12 @@ export default function Roles() {
       alert(resp.message || "Delete failed");
       return;
     }
+    trackUserEvent({
+      event: `Settings Role Delete: ${r.role_name}`,
+      module: "settings",
+      action: "role_delete",
+      target: r.role_name,
+    });
     const data = await apiGet<{ roles: RoleRow[] }>("/api/settings/roles");
     setRoles(data.roles || []);
   }
@@ -197,6 +210,12 @@ export default function Roles() {
       alert(resp.message || "Create failed");
       return;
     }
+    trackUserEvent({
+      event: `Settings Role Create: ${name}`,
+      module: "settings",
+      action: "role_create",
+      target: name,
+    });
 
     const data = await apiGet<{ roles: RoleRow[] }>("/api/settings/roles");
     setRoles(data.roles || []);

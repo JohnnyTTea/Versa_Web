@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { getProductCache, setProductCache } from "./productCache";
 
 type PictureResp = {
   ok: boolean;
@@ -40,6 +41,11 @@ export default function ProductPicture() {
     }
 
     const controller = new AbortController();
+    const cached = getProductCache<PictureResp>(itemId, "pictures");
+    if (cached?.ok) {
+      setPicfile1(cached?.picfile1 ? String(cached.picfile1) : "");
+      setPicfile2(cached?.picfile2 ? String(cached.picfile2) : "");
+    }
 
     const run = async () => {
       setLoading(true);
@@ -53,6 +59,7 @@ export default function ProductPicture() {
         if (!data?.ok) throw new Error(data?.message || "Load failed");
         setPicfile1(data?.picfile1 ? String(data.picfile1) : "");
         setPicfile2(data?.picfile2 ? String(data.picfile2) : "");
+        setProductCache(itemId, "pictures", data);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         setErr(String(e?.message || e || "Unknown error"));

@@ -37,7 +37,7 @@ export class AuthService {
     );
 
     const user = Array.isArray(userRows) ? userRows[0] : null;
-    if (!user) return { ok: false as const, message: 'Unauthorized' };
+    if (!user) return { ok: false as const, message: 'User Name Not Found !' };
     if (user.is_active === 0) return { ok: false as const, message: 'User is inactive' };
 
     // TODO: 以后换成 bcrypt compare

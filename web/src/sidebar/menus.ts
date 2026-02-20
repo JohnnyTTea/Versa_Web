@@ -56,5 +56,6 @@ export const moduleMenus: Record<ModuleKey, SidebarItem[]> = {
   settings: [
     { label: "Users", to: "/settings", end: true },
     { label: "Roles", to: "/settings/roles" },
+    { label: "User Log", to: "/settings/log" },
   ],
 };
