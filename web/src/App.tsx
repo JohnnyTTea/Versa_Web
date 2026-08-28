@@ -50,7 +50,7 @@ function ProtectedLayout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/Versa">
       <SidebarProvider>
         <Routes>
           {/* 未登录页面 */}
