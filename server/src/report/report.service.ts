@@ -276,31 +276,67 @@ export class ReportService {
     const { startDate, endDate } = this.monthRange(13);
 
     const RMA = `
-      SELECT samemo.*, sainvl.*
-      FROM samemo
-      JOIN sainvl ON samemo.Invno = sainvl.Trno
-      WHERE samemo.Trdate > ? AND samemo.Trdate < ?
-      ORDER BY samemo.Trdate DESC
+      SELECT m.Trdate AS __RmaTrdate, m.*, l.*
+      FROM aisdata1.samemo m
+      JOIN aisdata1.sainvl l ON m.Invno = l.Trno
+      WHERE m.Trdate > ? AND m.Trdate < ? AND m.Trdate >= ?
+      UNION ALL
+      SELECT m.Trdate AS __RmaTrdate, m.*, l.*
+      FROM aisdata5.samemo m
+      JOIN aisdata5.sainvl l ON m.Invno = l.Trno
+      WHERE m.Trdate > ? AND m.Trdate < ? AND m.Trdate < ?
+      ORDER BY __RmaTrdate DESC
     `;
     const SAINVL = `
-      SELECT Itemno, COUNT(sainvl.Itemno) AS \`Total Sale\`
-      FROM aisdata5.sainvl
-      WHERE Trdate > ? AND Trdate < ?
+      SELECT Itemno, SUM(TotalSale) AS \`Total Sale\`
+      FROM (
+        SELECT Itemno, COUNT(Itemno) AS TotalSale
+        FROM aisdata1.sainvl
+        WHERE Trdate > ? AND Trdate < ? AND Trdate >= ?
+        GROUP BY Itemno
+        UNION ALL
+        SELECT Itemno, COUNT(Itemno) AS TotalSale
+        FROM aisdata5.sainvl
+        WHERE Trdate > ? AND Trdate < ? AND Trdate < ?
+        GROUP BY Itemno
+      ) t
       GROUP BY Itemno
       ORDER BY \`Total Sale\` DESC
     `;
     const SAMEMO = `
-      SELECT sainvl.Itemno, COUNT(*) AS \`Total Return\`
-      FROM aisdata5.samemo
-      JOIN aisdata5.sainvl ON samemo.Invno = sainvl.Trno
-      WHERE samemo.Trdate > ? AND samemo.Trdate < ?
-      GROUP BY sainvl.Itemno
+      SELECT Itemno, SUM(TotalReturn) AS \`Total Return\`
+      FROM (
+        SELECT l.Itemno, COUNT(*) AS TotalReturn
+        FROM aisdata1.samemo m
+        JOIN aisdata1.sainvl l ON m.Invno = l.Trno
+        WHERE m.Trdate > ? AND m.Trdate < ? AND m.Trdate >= ?
+        GROUP BY l.Itemno
+        UNION ALL
+        SELECT l.Itemno, COUNT(*) AS TotalReturn
+        FROM aisdata5.samemo m
+        JOIN aisdata5.sainvl l ON m.Invno = l.Trno
+        WHERE m.Trdate > ? AND m.Trdate < ? AND m.Trdate < ?
+        GROUP BY l.Itemno
+      ) t
+      GROUP BY Itemno
       ORDER BY \`Total Return\` DESC
     `;
 
-    const rmaTable = await this.db.query<any>('aisdata5', RMA, [startDate, endDate]);
-    const saleTable = await this.db.query<any>('aisdata5', SAINVL, [startDate, endDate]);
-    const returnTable = await this.db.query<any>('aisdata5', SAMEMO, [startDate, endDate]);
+    const splitParams = [
+      startDate,
+      endDate,
+      AIS_CUTOVER_DATE,
+      startDate,
+      endDate,
+      AIS_CUTOVER_DATE,
+    ];
+    const rmaTable = await this.db.query<any>('aisdata0', RMA, splitParams);
+    const saleTable = await this.db.query<any>('aisdata0', SAINVL, splitParams);
+    const returnTable = await this.db.query<any>('aisdata0', SAMEMO, splitParams);
+    const rmaExportRows = rmaTable.map((r: any) => {
+      const { __RmaTrdate, ...row } = r;
+      return row;
+    });
 
     const saleMap = new Map(saleTable.map((r: any) => [String(r.Itemno), Number(r['Total Sale'] || 0)]));
     const returnMap = new Map(returnTable.map((r: any) => [String(r.Itemno), Number(r['Total Return'] || 0)]));
@@ -336,9 +372,9 @@ export class ReportService {
     const filePath = path.join(this.baseDir, xlsxName);
     const wb = new ExcelJS.Workbook();
     const ws1 = wb.addWorksheet('Returned Products');
-    if (rmaTable.length) {
-      ws1.addRow(Object.keys(rmaTable[0]));
-      rmaTable.forEach((r: any) => ws1.addRow(Object.values(r)));
+    if (rmaExportRows.length) {
+      ws1.addRow(Object.keys(rmaExportRows[0]));
+      rmaExportRows.forEach((r: any) => ws1.addRow(Object.values(r)));
     } else {
       ws1.addRow(['No data']);
     }
