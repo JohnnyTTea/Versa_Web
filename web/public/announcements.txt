@@ -1,7 +1,7 @@
 # Home page announcements
 # One line = one announcement item
 # Lines starting with # are comments and will be ignored
-Updates(2026-02-19):
-Product: Added Sales Amount Trend chart for 12 Mo.
-Purchase: OPO/RPO search added.
-System settings: Users activity log added.
+
+
+Updates(2026-08-28):
+RMA Report: Updated to 2026

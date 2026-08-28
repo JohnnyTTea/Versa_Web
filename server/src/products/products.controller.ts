@@ -54,7 +54,7 @@ export class ProductsController {
   @Get('on-order')
   async onOrder(@Query('id') id?: string) {
     const itemId = (id || '').trim();
-    if (!itemId) return { ok: false, message: 'Missing id', orders: [], transit: [] };
+    if (!itemId) return { ok: false, message: 'Missing id', orders: [], inventory: [], transit: [] };
     return await this.products.getOnOrder(itemId);
   }
 

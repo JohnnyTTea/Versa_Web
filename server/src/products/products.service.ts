@@ -300,17 +300,28 @@ export class ProductsService {
   // ---------- index.php: on-order ----------
   async getOnOrder(itemId: string) {
     // 只取 aisdata1.poordl
-    const orders = await this.db.query(
-      'aisdata1',
-      `
-      SELECT d.*, p.Sstate
-      FROM aisdata1.poordl d
-      LEFT JOIN aisdata1.poord p ON d.Trno = p.Trno
-      WHERE d.Itemno = ?
-      ORDER BY d.Opodate DESC, d.Opono DESC
-      `,
-      [itemId],
-    );
+    const [orders, inventory] = await Promise.all([
+      this.db.query(
+        'aisdata1',
+        `
+        SELECT d.*, p.Sstate
+        FROM aisdata1.poordl d
+        LEFT JOIN aisdata1.poord p ON d.Trno = p.Trno
+        WHERE d.Itemno = ?
+        ORDER BY d.Opodate DESC, d.Opono DESC
+        `,
+        [itemId],
+      ),
+      this.db.query(
+        'aisdata1',
+        `
+        SELECT *
+        FROM aisdata1.itemwhse
+        WHERE Itemno = ?
+        `,
+        [itemId],
+      ),
+    ]);
 
     // 你 PHP 里 transit 目前是空数组
     const transit: any[] = [];
@@ -318,6 +329,7 @@ export class ProductsService {
     return {
       ok: true,
       orders: Array.isArray(orders) ? orders : [],
+      inventory: Array.isArray(inventory) ? inventory : [],
       transit,
     };
   }
@@ -417,89 +429,89 @@ export class ProductsService {
     const sortBy = this.normalizeSort(params.sort);
     const orderDir = this.normalizeOrder(params.order);
 
-    // 总记录数
-    const countRows = await this.db.query(
-      'aisdata0',
-      `
-      SELECT COUNT(*) AS cnt
-      FROM (
-        SELECT s.Trdate
-        FROM aisdata1.sainvl s
-        LEFT JOIN aisdata1.sainv v ON s.Trno = v.Trno
-        WHERE s.Itemno = ?
-          AND s.Trdate >= ?
-        UNION ALL
-        SELECT s.Trdate
-        FROM aisdata5.sainvl s
-        LEFT JOIN aisdata5.sainv v ON s.Trno = v.Trno
-        WHERE s.Itemno = ?
-          AND s.Trdate < ?
-      ) AS t
-      `,
-      [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE],
-    );
+    const [countRows, rows] = await Promise.all([
+      // 总记录数（不需要 join sainv）
+      this.db.query(
+        'aisdata0',
+        `
+        SELECT COUNT(*) AS cnt
+        FROM (
+          SELECT s.Trdate
+          FROM aisdata1.sainvl s
+          WHERE s.Itemno = ?
+            AND s.Trdate >= ?
+          UNION ALL
+          SELECT s.Trdate
+          FROM aisdata5.sainvl s
+          WHERE s.Itemno = ?
+            AND s.Trdate < ?
+        ) AS t
+        `,
+        [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE],
+      ),
+      // 本页数据
+      // 注意：ORDER BY 不能用 ? 占位符，所以必须 whitelist
+      this.db.query(
+        'aisdata0',
+        `
+        SELECT
+          t.Trdate,
+          t.Price,
+          t.Shiqty,
+          t.Trum,
+          t.Company,
+          t.Trno,
+          t.Ordno,
+          t.Trorig1,
+          t.Trorig2,
+          t.Shipvia,
+          t.Stracno
+        FROM (
+          SELECT
+            s.Trdate,
+            s.Price,
+            s.Shiqty,
+            s.Trum,
+            s.Company,
+            s.Trno,
+            v.Ordno,
+            v.Trorig1,
+            v.Trorig2,
+            v.Shipvia,
+            v.Stracno
+          FROM aisdata1.sainvl s
+          LEFT JOIN aisdata1.sainv v ON s.Trno = v.Trno
+          WHERE s.Itemno = ?
+            AND s.Trdate >= ?
+          UNION ALL
+          SELECT
+            s.Trdate,
+            s.Price,
+            s.Shiqty,
+            s.Trum,
+            s.Company,
+            s.Trno,
+            v.Ordno,
+            v.Trorig1,
+            v.Trorig2,
+            v.Shipvia,
+            v.Stracno
+          FROM aisdata5.sainvl s
+          LEFT JOIN aisdata5.sainv v ON s.Trno = v.Trno
+          WHERE s.Itemno = ?
+            AND s.Trdate < ?
+        ) AS t
+        ORDER BY ${sortBy} ${orderDir}
+        LIMIT ? OFFSET ?
+        `,
+        [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE, limit, offset],
+      ),
+    ]);
+
     const total = Number(
       (Array.isArray(countRows) ? countRows[0]?.cnt : 0) || 0,
     );
     const pages = Math.max(1, Math.ceil(total / limit));
-
-    // 本页数据
-    // 注意：ORDER BY 不能用 ? 占位符，所以必须 whitelist
-    const rows = await this.db.query(
-      'aisdata0',
-      `
-      SELECT
-        t.Trdate,
-        t.Price,
-        t.Shiqty,
-        t.Trum,
-        t.Company,
-        t.Trno,
-        t.Ordno,
-        t.Trorig1,
-        t.Trorig2,
-        t.Shipvia,
-        t.Stracno
-      FROM (
-        SELECT
-          s.Trdate,
-          s.Price,
-          s.Shiqty,
-          s.Trum,
-          s.Company,
-          s.Trno,
-          v.Ordno,
-          v.Trorig1,
-          v.Trorig2,
-          v.Shipvia,
-          v.Stracno
-        FROM aisdata1.sainvl s
-        LEFT JOIN aisdata1.sainv v ON s.Trno = v.Trno
-        WHERE s.Itemno = ?
-          AND s.Trdate >= ?
-        UNION ALL
-        SELECT
-          s.Trdate,
-          s.Price,
-          s.Shiqty,
-          s.Trum,
-          s.Company,
-          s.Trno,
-          v.Ordno,
-          v.Trorig1,
-          v.Trorig2,
-          v.Shipvia,
-          v.Stracno
-        FROM aisdata5.sainvl s
-        LEFT JOIN aisdata5.sainv v ON s.Trno = v.Trno
-        WHERE s.Itemno = ?
-          AND s.Trdate < ?
-      ) AS t
-      ORDER BY ${sortBy} ${orderDir}
-      LIMIT ? OFFSET ?
-      `,
-      [itemId, AIS_CUTOVER_DATE, itemId, AIS_CUTOVER_DATE, limit, offset],
-    );
 
     return {
       ok: true,
@@ -523,7 +535,7 @@ export class ProductsService {
       `
       SELECT t.*
       FROM (
-        SELECT s.*, v.Trorig1, v.Trorig2, v.Ordno, v.Shipvia, v.Stracno
+        SELECT s.Price,S.Trdate,S.Shiqty,S.Trum,S.Company, v.Trorig1, v.Trorig2, v.Ordno, v.Shipvia, v.Stracno
         FROM aisdata1.sainvl s
         LEFT JOIN aisdata1.sainv v ON s.Trno = v.Trno
         WHERE s.Itemno = ?
@@ -601,6 +613,8 @@ export class ProductsService {
 
   // ---------- sales_12mo.php ----------
   async getSales12mo(itemId: string) {
+    const { startDate, endDate } = this.monthRange(12);
+
     const rows = await this.db.query(
       'aisdata0', // 你 PHP 用 aisdata0 连接，但里面引用了 aisdata1 表；我们直接照抄
       `
@@ -638,6 +652,7 @@ export class ProductsService {
           FROM aisdata1.poinvl
           WHERE Itemno = ?
             AND Trdate >= ?
+            AND Trdate < ?
           GROUP BY DATE_FORMAT(Trdate, '%Y-%m')
           UNION ALL
           SELECT
@@ -647,6 +662,7 @@ export class ProductsService {
           FROM aisdata5.poinvl
           WHERE Itemno = ?
             AND Trdate < ?
+            AND Trdate >= ?
           GROUP BY DATE_FORMAT(Trdate, '%Y-%m')
         ) AS p_union
         GROUP BY MonthKey
@@ -668,6 +684,7 @@ export class ProductsService {
           FROM aisdata1.sainvl
           WHERE Itemno = ?
             AND Trdate >= ?
+            AND Trdate < ?
           GROUP BY DATE_FORMAT(Trdate, '%Y-%m')
           UNION ALL
           SELECT
@@ -679,6 +696,7 @@ export class ProductsService {
           FROM aisdata5.sainvl
           WHERE Itemno = ?
             AND Trdate < ?
+            AND Trdate >= ?
           GROUP BY DATE_FORMAT(Trdate, '%Y-%m')
         ) AS s_union
         GROUP BY MonthKey
@@ -688,12 +706,16 @@ export class ProductsService {
       [
         itemId,
         AIS_CUTOVER_DATE,
+        endDate,
         itemId,
         AIS_CUTOVER_DATE,
+        startDate,
         itemId,
         AIS_CUTOVER_DATE,
+        endDate,
         itemId,
         AIS_CUTOVER_DATE,
+        startDate,
       ],
     );
 

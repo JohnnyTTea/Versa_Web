@@ -32,6 +32,7 @@ import Vendor from "./pages/purchase/Vendor";
 // Report Page
 import ReportExportPage from "./pages/reports/ReportExportPage";
 import DbBrowserPage from "./pages/reports/DbBrowserPage";
+import DataReportPage from "./pages/reports/DataReportPage";
 // Settings Page
 import Roles from "./pages/settings/Roles";
 import Users from "./pages/settings/Users";
@@ -84,6 +85,7 @@ export default function App() {
             <Route path="/purchase/vendor" element={<Vendor />} />
             {/* Report */}
             <Route path="/report" element={<ReportExportPage/>} />
+            <Route path="/report/data" element={<DataReportPage />} />
             <Route path="/report/database" element={<DbBrowserPage />} />
             {/* Settings */}
             <Route path="/settings" element={<Users />} />

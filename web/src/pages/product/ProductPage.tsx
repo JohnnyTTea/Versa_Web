@@ -69,6 +69,7 @@ export default function ProductPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [onhand, setOnhand] = useState<Onhand | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<any[]>([]);
   const [transit, setTransit] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -112,6 +113,7 @@ export default function ProductPage() {
         setProduct(null);
         setOnhand(null);
         setOrders([]);
+        setInventory([]);
         setTransit([]);
         setHistoryLoading(false);
         setEbayPrice(null);
@@ -142,6 +144,7 @@ export default function ProductPage() {
           setProduct(null);
           setOnhand(null);
           setOrders([]);
+          setInventory([]);
           setTransit([]);
           setHistoryLoading(false);
           setEbayPrice(null);
@@ -214,6 +217,7 @@ export default function ProductPage() {
         // 4) on-order / on-transit（第二优先级）
         if (!isProductRoot) {
           setOrders([]);
+          setInventory([]);
           setTransit([]);
           setHistoryLoading(false);
         } else {
@@ -226,15 +230,18 @@ export default function ProductPage() {
               if (cancelled) return;
               if (!oResp.ok || !oJson?.ok) {
                 setOrders([]);
+                setInventory([]);
                 setTransit([]);
               } else {
                 setOrders(Array.isArray(oJson.orders) ? oJson.orders : []);
+                setInventory(Array.isArray(oJson.inventory) ? oJson.inventory : []);
                 setTransit(Array.isArray(oJson.transit) ? oJson.transit : []);
                 setProductCache(id, "on-order", oJson);
               }
             } catch {
               if (cancelled) return;
               setOrders([]);
+              setInventory([]);
               setTransit([]);
             } finally {
               if (!cancelled) setHistoryLoading(false);
@@ -281,6 +288,7 @@ export default function ProductPage() {
         setProduct(null);
         setOnhand(null);
         setOrders([]);
+        setInventory([]);
         setTransit([]);
         setHistoryLoading(false);
         setEbayPrice(null);
@@ -310,6 +318,8 @@ export default function ProductPage() {
     if (next) nav(`${path}?id=${encodeURIComponent(next)}`);
     else nav(path);
   }
+
+  const inventoryColumns = inventory.length ? Object.keys(inventory[0] || {}) : [];
 
   return (
     <div className="main-content progressive-enter">
@@ -507,6 +517,41 @@ export default function ProductPage() {
       {/* ✅ 下面内容：/product 显示 OnOrder/Transit；其他子页面显示 Outlet */}
       {isProductRoot ? (
         <div>
+                    <h3>Inventory</h3>
+          <table>
+            <tbody>
+              <tr>
+                {inventoryColumns.length ? (
+                  inventoryColumns.map((col) => <th key={col}>{col}</th>)
+                ) : (
+                  <th>Inventory</th>
+                )}
+              </tr>
+
+              {inventory.length ? (
+                inventory.map((row, idx) => (
+                  <tr key={idx}>
+                    {inventoryColumns.map((col) => (
+                      <td key={col}>{row?.[col] ?? ""}</td>
+                    ))}
+                  </tr>
+                ))
+              ) : historyLoading ? (
+                <tr>
+                  <td colSpan={Math.max(1, inventoryColumns.length)} style={{ textAlign: "center" }}>
+                    Loading inventory...
+                  </td>
+                </tr>
+              ) : (
+                <tr>
+                  <td colSpan={Math.max(1, inventoryColumns.length)} style={{ textAlign: "center" }}>
+                    无库存数据
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
           <h3>On Order</h3>
           <table>
             <tbody>

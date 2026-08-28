@@ -162,7 +162,7 @@ export default function Home() {
       { key: "purchase", icon: "📋", cn: "采购管理", en: "Purchase", to: "/purchase" },
       { key: "dto", icon: "➕", cn: "DTO 业务", en: "DTO Process", to: "/dto" },
       { key: "modify", icon: "📥", cn: "数据更新", en: "Data Modification", to: "/modify" },
-      { key: "report", icon: "🖨", cn: "数据下载", en: "Report Download", to: "/report" },
+      { key: "report", icon: "🖨", cn: "数据报告", en: "Data Report", to: "/report" },
       { key: "inventory", icon: "📦", cn: "库存管理", en: "Inventory Manage", to: "/inventory" },
       { key: "review", icon: "📝", cn: "审核记录", en: "Pending Review", to: "/review" },
       { key: "settings", icon: "⚙", cn: "系统设置", en: "System Settings", to: "/settings" },
