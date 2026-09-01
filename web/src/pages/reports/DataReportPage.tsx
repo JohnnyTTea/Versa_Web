@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import "../../styles/report.css";
 
 const YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
@@ -25,9 +25,30 @@ type TrendPoint = {
   total: number;
 };
 
-function hashSeed(v: string) {
-  return [...v].reduce((s, ch) => s + ch.charCodeAt(0), 0) || 77;
-}
+type DataMonthRow = {
+  year: number;
+  month: number;
+  purchaseQty: number;
+  purchaseAmt: number;
+  salesQty: number;
+  salesAmt: number;
+  returnQty: number;
+};
+
+type VendorDataResp = {
+  ok: boolean;
+  message?: string;
+  vendor: { Compno: string; Company: string } | null;
+  rows: DataMonthRow[];
+};
+
+type SkuDataResp = {
+  ok: boolean;
+  message?: string;
+  item: { Itemno: string; Desc1: string; Desc2: string; Vendno: string } | null;
+  rows: DataMonthRow[];
+  trend: TrendPoint[];
+};
 
 function currency(v: number) {
   return new Intl.NumberFormat("en-US", {
@@ -45,57 +66,137 @@ function percent(v: number) {
   return `${v.toFixed(1)}%`;
 }
 
-function buildVendorData(vendor: string): Record<number, VendorMetrics[]> {
-  const seed = hashSeed(vendor);
-  const out: Record<number, VendorMetrics[]> = {};
-  YEARS.forEach((year, yi) => {
-    out[year] = MONTHS.map((_, mi) => {
-      const base = 75 + ((seed + yi * 17 + mi * 13) % 110);
-      const salesQty = Math.max(base - (mi % 4) * 3 + yi * 2, 10);
-      const purchaseQty = Math.max(base + ((mi + yi) % 5) * 6, 10);
-      const purchaseAmt = purchaseQty * (14 + ((seed + mi) % 12));
-      const salesAmt = salesQty * (18 + ((seed + yi + mi) % 14));
-      return { purchaseQty, purchaseAmt, salesQty, salesAmt };
-    });
+function emptyVendorData(): Record<number, VendorMetrics[]> {
+  return Object.fromEntries(
+    YEARS.map((year) => [
+      year,
+      MONTHS.map(() => ({ purchaseQty: 0, purchaseAmt: 0, salesQty: 0, salesAmt: 0 })),
+    ])
+  ) as Record<number, VendorMetrics[]>;
+}
+
+function emptySkuData(): Record<number, SkuMetrics[]> {
+  return Object.fromEntries(
+    YEARS.map((year) => [
+      year,
+      MONTHS.map(() => ({ purchaseQty: 0, soldQty: 0, returnQty: 0, returnRate: 0 })),
+    ])
+  ) as Record<number, SkuMetrics[]>;
+}
+
+function buildVendorData(rows: DataMonthRow[]): Record<number, VendorMetrics[]> {
+  const out = emptyVendorData();
+  rows.forEach((r) => {
+    const idx = Number(r.month) - 1;
+    if (!out[r.year] || idx < 0 || idx >= 12) return;
+    out[r.year][idx] = {
+      purchaseQty: Number(r.purchaseQty || 0),
+      purchaseAmt: Number(r.purchaseAmt || 0),
+      salesQty: Number(r.salesQty || 0),
+      salesAmt: Number(r.salesAmt || 0),
+    };
   });
   return out;
 }
 
-function buildSkuData(sku: string): Record<number, SkuMetrics[]> {
-  const seed = hashSeed(sku);
-  const out: Record<number, SkuMetrics[]> = {};
-  YEARS.forEach((year, yi) => {
-    out[year] = MONTHS.map((_, mi) => {
-      const purchaseQty = 90 + ((seed + yi * 11 + mi * 9) % 85);
-      const soldQty = Math.max(purchaseQty - 10 - ((mi + yi) % 16), 10);
-      const returnQty = Math.max(Math.round(soldQty * (0.03 + ((mi + seed) % 7) * 0.006)), 0);
-      const returnRate = soldQty > 0 ? (returnQty / soldQty) * 100 : 0;
-      return { purchaseQty, soldQty, returnQty, returnRate };
-    });
+function buildSkuData(rows: DataMonthRow[]): Record<number, SkuMetrics[]> {
+  const out = emptySkuData();
+  rows.forEach((r) => {
+    const idx = Number(r.month) - 1;
+    const soldQty = Number(r.salesQty || 0);
+    const returnQty = Number(r.returnQty || 0);
+    if (!out[r.year] || idx < 0 || idx >= 12) return;
+    out[r.year][idx] = {
+      purchaseQty: Number(r.purchaseQty || 0),
+      soldQty,
+      returnQty,
+      returnRate: soldQty > 0 ? (returnQty / soldQty) * 100 : 0,
+    };
   });
   return out;
 }
 
-function buildTrend(sku: string): TrendPoint[] {
-  const seed = hashSeed(sku);
-  return Array.from({ length: 13 }, (_, i) => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - (12 - i));
-    const label = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(-2)}`;
-    const ebay = 50 + ((seed + i * 9) % 120);
-    const amzn = 40 + ((seed + i * 13) % 100);
-    const total = ebay + amzn;
-    return { label, ebay, amzn, total };
+async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, {
+    credentials: "include",
+    signal,
+    headers: { Accept: "application/json" },
   });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  return (await res.json()) as T;
 }
 
 export default function DataReportPage() {
-  const [vendor, setVendor] = useState("ALTEC-JHY");
+  const [vendorInput, setVendorInput] = useState("ALTEC-YR");
+  const [skuInput, setSkuInput] = useState("9-T-0308");
+  const [vendor, setVendor] = useState("ALTEC-YR");
   const [sku, setSku] = useState("9-T-0308");
 
-  const vendorData = useMemo(() => buildVendorData(vendor), [vendor]);
-  const skuData = useMemo(() => buildSkuData(sku), [sku]);
-  const trend = useMemo(() => buildTrend(sku), [sku]);
+  const [vendorResp, setVendorResp] = useState<VendorDataResp | null>(null);
+  const [skuResp, setSkuResp] = useState<SkuDataResp | null>(null);
+  const [vendorLoading, setVendorLoading] = useState(false);
+  const [skuLoading, setSkuLoading] = useState(false);
+  const [vendorErr, setVendorErr] = useState("");
+  const [skuErr, setSkuErr] = useState("");
+
+  useEffect(() => {
+    if (!vendor) {
+      setVendorResp(null);
+      setVendorErr("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setVendorLoading(true);
+    setVendorErr("");
+
+    apiGet<VendorDataResp>(`/api/report/data/vendor?vendor=${encodeURIComponent(vendor)}`, controller.signal)
+      .then((data) => {
+        setVendorResp(data);
+        setVendorErr(data.ok ? "" : data.message || "Vendor load failed");
+      })
+      .catch((e: any) => {
+        if (e?.name === "AbortError") return;
+        setVendorResp(null);
+        setVendorErr(String(e?.message || e || "Vendor load failed"));
+      })
+      .finally(() => setVendorLoading(false));
+
+    return () => controller.abort();
+  }, [vendor]);
+
+  useEffect(() => {
+    if (!sku) {
+      setSkuResp(null);
+      setSkuErr("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setSkuLoading(true);
+    setSkuErr("");
+
+    apiGet<SkuDataResp>(`/api/report/data/sku?sku=${encodeURIComponent(sku)}`, controller.signal)
+      .then((data) => {
+        setSkuResp(data);
+        setSkuErr(data.ok ? "" : data.message || "SKU load failed");
+      })
+      .catch((e: any) => {
+        if (e?.name === "AbortError") return;
+        setSkuResp(null);
+        setSkuErr(String(e?.message || e || "SKU load failed"));
+      })
+      .finally(() => setSkuLoading(false));
+
+    return () => controller.abort();
+  }, [sku]);
+
+  const vendorData = useMemo(() => buildVendorData(vendorResp?.rows || []), [vendorResp]);
+  const skuData = useMemo(() => buildSkuData(skuResp?.rows || []), [skuResp]);
+  const trend = useMemo(() => skuResp?.trend || [], [skuResp]);
 
   const maxTrend = useMemo(() => trend.reduce((m, x) => Math.max(m, x.total), 0), [trend]);
   const trendLine = useMemo(() => {
@@ -115,13 +216,22 @@ export default function DataReportPage() {
         <div className="dr-header">
           <h2>Vendor 销量查询 (2020-2026)</h2>
           <div className="dr-entity-current">
-            Vendor: <strong>{vendor || "-"}</strong>
+            Vendor: <strong>{vendorResp?.vendor?.Compno || vendor || "-"}</strong>
+            {vendorResp?.vendor?.Company ? ` · ${vendorResp.vendor.Company}` : ""}
           </div>
-          <div className="dr-filters">
+          <form
+            className="dr-filters"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setVendor(vendorInput.trim());
+            }}
+          >
             <label htmlFor="vendor">Vendor</label>
-            <input id="vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} />
-          </div>
+            <input id="vendor" value={vendorInput} onChange={(e) => setVendorInput(e.target.value)} />
+            <button type="submit" disabled={vendorLoading}>{vendorLoading ? "Loading" : "查询"}</button>
+          </form>
         </div>
+        {vendorErr ? <div className="dr-error">{vendorErr}</div> : null}
 
         <div className="dr-table-wrap">
           <table className="dr-table">
@@ -210,13 +320,22 @@ export default function DataReportPage() {
         <div className="dr-header">
           <h2>SKU 销量查询 (2020-2026)</h2>
           <div className="dr-entity-current">
-            SKU: <strong>{sku || "-"}</strong>
+            SKU: <strong>{skuResp?.item?.Itemno || sku || "-"}</strong>
+            {skuResp?.item?.Vendno ? ` · Vendor ${skuResp.item.Vendno}` : ""}
           </div>
-          <div className="dr-filters">
+          <form
+            className="dr-filters"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSku(skuInput.trim());
+            }}
+          >
             <label htmlFor="sku">SKU</label>
-            <input id="sku" value={sku} onChange={(e) => setSku(e.target.value)} />
-          </div>
+            <input id="sku" value={skuInput} onChange={(e) => setSkuInput(e.target.value)} />
+            <button type="submit" disabled={skuLoading}>{skuLoading ? "Loading" : "查询"}</button>
+          </form>
         </div>
+        {skuErr ? <div className="dr-error">{skuErr}</div> : null}
 
         <div className="dr-table-wrap">
           <table className="dr-table">

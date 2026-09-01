@@ -10,17 +10,31 @@ type ReportKey =
   | 'AIS SLS Report'
   | 'Whse SSI Report'
   | 'RMA Report'
+  | 'AIS Sales Order Report'
   | 'Ikon Item Bin'
   | 'ModernDepot Item Bin'
   | 'DTO Item Bin';
 
 type ReportGroup = { name: string; states: string[] };
+type GenerateOptions = { startDate?: string; endDate?: string };
+type DataMonthRow = {
+  year: number;
+  month: number;
+  purchaseQty: number;
+  purchaseAmt: number;
+  salesQty: number;
+  salesAmt: number;
+  returnQty: number;
+  ebayQty?: number;
+  amznQty?: number;
+};
 
 @Injectable()
 export class ReportService {
   constructor(private readonly db: MysqlService) {}
 
   private baseDir = path.join(process.cwd(), 'tmp', 'report');
+  private dataReportYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
 
   private async ensureDir() {
     await fs.mkdir(this.baseDir, { recursive: true });
@@ -43,6 +57,19 @@ export class ReportService {
     const csv = '\uFEFF' + lines.join('\r\n');
     await fs.writeFile(filePath, csv, 'utf8');
     return { filename, filePath };
+  }
+
+  private formatCsvDate(v: any): any {
+    if (!(v instanceof Date)) return v;
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  }
+
+  private formatRowDates<T extends Record<string, any>>(row: T): T {
+    return Object.fromEntries(
+      Object.entries(row).map(([key, value]) => [key, this.formatCsvDate(value)]),
+    ) as T;
   }
 
   private monthRange(n = 13) {
@@ -74,6 +101,106 @@ export class ReportService {
       cur.setUTCMonth(cur.getUTCMonth() + 1);
     }
     return { months, startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) };
+  }
+
+  private dataReportRange() {
+    const startYear = this.dataReportYears[0];
+    const endYear = this.dataReportYears[this.dataReportYears.length - 1];
+    return {
+      startDate: `${startYear}-01-01`,
+      endDate: `${endYear + 1}-01-01`,
+    };
+  }
+
+  private monthKey(year: number, month: number) {
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
+  private emptyDataMonthRows(): DataMonthRow[] {
+    return this.dataReportYears.flatMap((year) =>
+      Array.from({ length: 12 }, (_, i) => ({
+        year,
+        month: i + 1,
+        purchaseQty: 0,
+        purchaseAmt: 0,
+        salesQty: 0,
+        salesAmt: 0,
+        returnQty: 0,
+      })),
+    );
+  }
+
+  private mergeMetricRows(
+    purchaseRows: any[],
+    salesRows: any[],
+    returnRows: any[],
+    trendRows?: any[],
+  ) {
+    const map = new Map(this.emptyDataMonthRows().map((r) => [this.monthKey(r.year, r.month), r]));
+
+    for (const r of purchaseRows || []) {
+      const key = this.monthKey(Number(r.yy), Number(r.mm));
+      const row = map.get(key);
+      if (!row) continue;
+      row.purchaseQty = Number(r.purchaseQty || 0);
+      row.purchaseAmt = Number(r.purchaseAmt || 0);
+    }
+
+    for (const r of salesRows || []) {
+      const key = this.monthKey(Number(r.yy), Number(r.mm));
+      const row = map.get(key);
+      if (!row) continue;
+      row.salesQty = Number(r.salesQty || 0);
+      row.salesAmt = Number(r.salesAmt || 0);
+    }
+
+    for (const r of returnRows || []) {
+      const key = this.monthKey(Number(r.yy), Number(r.mm));
+      const row = map.get(key);
+      if (!row) continue;
+      row.returnQty = Number(r.returnQty || 0);
+    }
+
+    for (const r of trendRows || []) {
+      const key = this.monthKey(Number(r.yy), Number(r.mm));
+      const row = map.get(key);
+      if (!row) continue;
+      row.ebayQty = Number(r.ebayQty || 0);
+      row.amznQty = Number(r.amznQty || 0);
+    }
+
+    return Array.from(map.values());
+  }
+
+  private parseDateRange(options?: GenerateOptions) {
+    const startDate = String(options?.startDate || '').trim();
+    const endDate = String(options?.endDate || '').trim();
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (!datePattern.test(startDate) || !datePattern.test(endDate)) {
+      throw new Error('请选择有效的开始日期和结束日期。');
+    }
+
+    const start = new Date(`${startDate}T00:00:00Z`);
+    const end = new Date(`${endDate}T00:00:00Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new Error('日期范围无效。');
+    }
+
+    const normalizedStart = start.toISOString().slice(0, 10);
+    const normalizedEnd = end.toISOString().slice(0, 10);
+    if (normalizedStart !== startDate || normalizedEnd !== endDate || start > end) {
+      throw new Error('日期范围无效。');
+    }
+
+    const exclusiveEnd = new Date(end);
+    exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+
+    return {
+      startDate,
+      endDate,
+      exclusiveEndDate: exclusiveEnd.toISOString().slice(0, 10),
+    };
   }
 
   private async getReportGroups(): Promise<ReportGroup[]> {
@@ -391,6 +518,289 @@ export class ReportService {
     return { file: `/api/report/download?file=${encodeURIComponent(xlsxName)}` };
   }
 
+  private async salesOrderReport(options?: GenerateOptions): Promise<{ file: string }> {
+    const { startDate, endDate, exclusiveEndDate } = this.parseDateRange(options);
+    const lineCols = Array.from({ length: 9 }, (_, i) => `r.Line${i + 1} AS Line${i + 1}`).join(', ');
+    const headers = [
+      'Line1',
+      'Line2',
+      'Line3',
+      'Line4',
+      'Line5',
+      'Line6',
+      'Line7',
+      'Line8',
+      'Line9',
+    ];
+
+    const sql = `
+      SELECT
+        o.*,
+        ${lineCols}
+      FROM aisdata1.saord o
+      LEFT JOIN aisdata1.saordr r ON r.Trno = o.Trno
+      WHERE o.Trdate >= ? AND o.Trdate < ?
+      ORDER BY o.Trdate, o.Trno
+    `;
+
+    const rows = await this.db.query<any>('aisdata1', sql, [startDate, exclusiveEndDate]);
+    const data = rows.map((row) => this.formatRowDates(row));
+
+    const filename = `AIS_Sales_Order_Report_${startDate}_to_${endDate}_${this.todayStamp()}.csv`;
+    await this.saveCsv(filename, data, data.length ? undefined : headers);
+    return { file: `/api/report/download?file=${encodeURIComponent(filename)}` };
+  }
+
+  async getDataReportVendor(vendorId: string) {
+    const { startDate, endDate } = this.dataReportRange();
+    const vendorRows = await this.db.query<any>(
+      'aisdata1',
+      `
+      SELECT Compno, Company
+      FROM aisdata1.vendor
+      WHERE Compno = ?
+      LIMIT 1
+      `,
+      [vendorId],
+    );
+    const vendor = Array.isArray(vendorRows) ? vendorRows[0] : null;
+
+    if (!vendor) {
+      return {
+        ok: false,
+        message: 'Vendor not found',
+        vendor: null,
+        rows: this.emptyDataMonthRows(),
+      };
+    }
+
+    const splitParams = [
+      vendorId,
+      startDate,
+      endDate,
+      AIS_CUTOVER_DATE,
+      vendorId,
+      startDate,
+      endDate,
+      AIS_CUTOVER_DATE,
+    ];
+
+    const [purchaseRows, salesRows, returnRows] = await Promise.all([
+      this.db.query<any>(
+        'aisdata1',
+        `
+        SELECT yy, mm, SUM(purchaseQty) AS purchaseQty, SUM(purchaseAmt) AS purchaseAmt
+        FROM (
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
+          FROM aisdata1.poinvl
+          WHERE Compno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
+          GROUP BY yy, mm
+          UNION ALL
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
+          FROM aisdata5.poinvl
+          WHERE Compno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
+          GROUP BY yy, mm
+        ) p
+        GROUP BY yy, mm
+        `,
+        splitParams,
+      ),
+      this.db.query<any>(
+        'aisdata1',
+        `
+        SELECT yy, mm, SUM(salesQty) AS salesQty, SUM(salesAmt) AS salesAmt
+        FROM (
+          SELECT YEAR(s.Trdate) AS yy, MONTH(s.Trdate) AS mm, SUM(s.Ordqty) AS salesQty, SUM(s.Ordqty * s.Price) AS salesAmt
+          FROM aisdata0.item i
+          STRAIGHT_JOIN aisdata1.sainvl s ON s.Itemno = i.Itemno
+          WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate >= ?
+          GROUP BY yy, mm
+          UNION ALL
+          SELECT YEAR(s.Trdate) AS yy, MONTH(s.Trdate) AS mm, SUM(s.Ordqty) AS salesQty, SUM(s.Ordqty * s.Price) AS salesAmt
+          FROM aisdata0.item i
+          STRAIGHT_JOIN aisdata5.sainvl s ON s.Itemno = i.Itemno
+          WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate < ?
+          GROUP BY yy, mm
+        ) s
+        GROUP BY yy, mm
+        `,
+        splitParams,
+      ),
+      this.db.query<any>(
+        'aisdata1',
+        `
+        SELECT yy, mm, SUM(returnQty) AS returnQty
+        FROM (
+          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
+          FROM aisdata0.item i
+          STRAIGHT_JOIN aisdata1.sainvl l ON l.Itemno = i.Itemno
+          JOIN aisdata1.samemo m ON m.Invno = l.Trno
+          WHERE i.Vendno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate >= ?
+          GROUP BY yy, mm
+          UNION ALL
+          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
+          FROM aisdata0.item i
+          STRAIGHT_JOIN aisdata5.sainvl l ON l.Itemno = i.Itemno
+          JOIN aisdata5.samemo m ON m.Invno = l.Trno
+          WHERE i.Vendno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate < ?
+          GROUP BY yy, mm
+        ) r
+        GROUP BY yy, mm
+        `,
+        splitParams,
+      ),
+    ]);
+
+    return {
+      ok: true,
+      vendor,
+      rows: this.mergeMetricRows(purchaseRows, salesRows, returnRows),
+    };
+  }
+
+  async getDataReportSku(itemId: string) {
+    const { startDate, endDate } = this.dataReportRange();
+    const itemRows = await this.db.query<any>(
+      'aisdata0',
+      `
+      SELECT Itemno, Desc1, Desc2, Vendno
+      FROM aisdata0.item
+      WHERE Itemno = ?
+      LIMIT 1
+      `,
+      [itemId],
+    );
+    const item = Array.isArray(itemRows) ? itemRows[0] : null;
+
+    if (!item) {
+      return {
+        ok: false,
+        message: 'SKU not found',
+        item: null,
+        rows: this.emptyDataMonthRows(),
+        trend: [],
+      };
+    }
+
+    const splitParams = [
+      itemId,
+      startDate,
+      endDate,
+      AIS_CUTOVER_DATE,
+      itemId,
+      startDate,
+      endDate,
+      AIS_CUTOVER_DATE,
+    ];
+
+    const [purchaseRows, salesRows, returnRows, trendRows] = await Promise.all([
+      this.db.query<any>(
+        'aisdata1',
+        `
+        SELECT yy, mm, SUM(purchaseQty) AS purchaseQty, SUM(purchaseAmt) AS purchaseAmt
+        FROM (
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
+          FROM aisdata1.poinvl
+          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
+          GROUP BY yy, mm
+          UNION ALL
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
+          FROM aisdata5.poinvl
+          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
+          GROUP BY yy, mm
+        ) p
+        GROUP BY yy, mm
+        `,
+        splitParams,
+      ),
+      this.db.query<any>(
+        'aisdata1',
+        `
+        SELECT yy, mm, SUM(salesQty) AS salesQty, SUM(salesAmt) AS salesAmt
+        FROM (
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS salesQty, SUM(Ordqty * Price) AS salesAmt
+          FROM aisdata1.sainvl
+          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
+          GROUP BY yy, mm
+          UNION ALL
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS salesQty, SUM(Ordqty * Price) AS salesAmt
+          FROM aisdata5.sainvl
+          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
+          GROUP BY yy, mm
+        ) s
+        GROUP BY yy, mm
+        `,
+        splitParams,
+      ),
+      this.db.query<any>(
+        'aisdata1',
+        `
+        SELECT yy, mm, SUM(returnQty) AS returnQty
+        FROM (
+          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
+          FROM aisdata1.samemo m
+          JOIN aisdata1.sainvl l ON m.Invno = l.Trno
+          WHERE l.Itemno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate >= ?
+          GROUP BY yy, mm
+          UNION ALL
+          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
+          FROM aisdata5.samemo m
+          JOIN aisdata5.sainvl l ON m.Invno = l.Trno
+          WHERE l.Itemno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate < ?
+          GROUP BY yy, mm
+        ) r
+        GROUP BY yy, mm
+        `,
+        splitParams,
+      ),
+      this.db.query<any>(
+        'aisdata1',
+        `
+        SELECT yy, mm, SUM(ebayQty) AS ebayQty, SUM(amznQty) AS amznQty
+        FROM (
+          SELECT
+            YEAR(s.Trdate) AS yy,
+            MONTH(s.Trdate) AS mm,
+            SUM(CASE WHEN v.Trorig1 = 'EBAY' THEN s.Ordqty ELSE 0 END) AS ebayQty,
+            SUM(CASE WHEN v.Trorig1 = 'AMZN' THEN s.Ordqty ELSE 0 END) AS amznQty
+          FROM aisdata1.sainvl s
+          LEFT JOIN aisdata1.sainv v ON v.Trno = s.Trno
+          WHERE s.Itemno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate >= ?
+          GROUP BY yy, mm
+          UNION ALL
+          SELECT
+            YEAR(s.Trdate) AS yy,
+            MONTH(s.Trdate) AS mm,
+            SUM(CASE WHEN v.Trorig1 = 'EBAY' THEN s.Ordqty ELSE 0 END) AS ebayQty,
+            SUM(CASE WHEN v.Trorig1 = 'AMZN' THEN s.Ordqty ELSE 0 END) AS amznQty
+          FROM aisdata5.sainvl s
+          LEFT JOIN aisdata5.sainv v ON v.Trno = s.Trno
+          WHERE s.Itemno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate < ?
+          GROUP BY yy, mm
+        ) t
+        GROUP BY yy, mm
+        `,
+        splitParams,
+      ),
+    ]);
+
+    const rows = this.mergeMetricRows(purchaseRows, salesRows, returnRows, trendRows);
+
+    return {
+      ok: true,
+      item,
+      rows,
+      trend: rows
+        .filter((r) => r.year === 2026)
+        .map((r) => ({
+          label: `${String(r.month).padStart(2, '0')}/${String(r.year).slice(-2)}`,
+          ebay: r.ebayQty || 0,
+          amzn: r.amznQty || 0,
+          total: r.salesQty || 0,
+        })),
+    };
+  }
+
   private async ikonBin(): Promise<{ file: string }> {
     const sql = `
       SELECT *
@@ -443,7 +853,7 @@ export class ReportService {
     return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
   }
 
-  async generate(report: ReportKey): Promise<{ file: string }> {
+  async generate(report: ReportKey, options?: GenerateOptions): Promise<{ file: string }> {
     switch (report) {
       case 'AIS SLS Report':
         return await this.salesReport();
@@ -451,6 +861,8 @@ export class ReportService {
         return await this.whseReport();
       case 'RMA Report':
         return await this.rmaReport();
+      case 'AIS Sales Order Report':
+        return await this.salesOrderReport(options);
       case 'Ikon Item Bin':
         return await this.ikonBin();
       case 'ModernDepot Item Bin':

@@ -6,6 +6,7 @@ type ReportKey =
   | "AIS SLS Report"
   | "Whse SSI Report"
   | "RMA Report"
+  | "AIS Sales Order Report"
   | "Ikon Item Bin"
   | "ModernDepot Item Bin"
   | "DTO Item Bin";
@@ -18,6 +19,7 @@ const DESCRIPTIONS: Record<ReportKey, string> = {
   "AIS SLS Report": "生成销售分析报表（含每月销售数量、平均售价、库存等）。",
   "Whse SSI Report": "生成仓库库存快照报告（SSI 库存状态）。",
   "RMA Report": "生成所有产品退货报告（credit memo, 订单详情，退货率等）。",
+  "AIS Sales Order Report": "根据指定日期范围导出订单，包含Remark信息、订单状态、客户信息等。",
   "Ikon Item Bin": "导出 Ikon 仓库中商品的 bin 分布信息。",
   "ModernDepot Item Bin": "导出 ModernDepot(3) 仓库中商品的 bin 分布信息。",
   "DTO Item Bin": "导出 DTO 仓库中商品的 bin 分布信息。",
@@ -27,13 +29,24 @@ const EXPORT_MESSAGES: Record<ReportKey, string> = {
   "AIS SLS Report": "生成销售分析报表（AIS）成功，浏览器正在下载。",
   "Whse SSI Report": "生成仓库快照报表成功，浏览器正在下载。",
   "RMA Report": "RMA报表 成功，浏览器正在下载。",
+  "AIS Sales Order Report": "AIS Sales Order 报表成功，浏览器正在下载。",
   "Ikon Item Bin": "Ikon bin 报表成功，浏览器正在下载。",
   "ModernDepot Item Bin": "ModenDepot bin 报表成功，浏览器正在下载。",
   "DTO Item Bin": "DTO bin 报表成功，浏览器正在下载。",
 };
 
-function defaultFileName(report: string) {
-  return report.replace(/\s+/g, "_") + ".xlsx";
+const CSV_REPORTS = new Set<ReportKey>([
+  "AIS SLS Report",
+  "Whse SSI Report",
+  "AIS Sales Order Report",
+  "Ikon Item Bin",
+  "ModernDepot Item Bin",
+  "DTO Item Bin",
+]);
+
+function defaultFileName(report: ReportKey) {
+  const ext = CSV_REPORTS.has(report) ? ".csv" : ".xlsx";
+  return report.replace(/\s+/g, "_") + ext;
 }
 
 export default function ReportExportPage() {
@@ -42,6 +55,7 @@ export default function ReportExportPage() {
       "AIS SLS Report",
       "Whse SSI Report",
       "RMA Report",
+      "AIS Sales Order Report",
       "Ikon Item Bin",
       "ModernDepot Item Bin",
       "DTO Item Bin",
@@ -54,6 +68,10 @@ export default function ReportExportPage() {
   const [desc, setDesc] = useState("");
   const [status, setStatus] = useState("Waiting for user action...");
   const [loading, setLoading] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  const needsDateRange = selected === "AIS Sales Order Report";
 
   function onSelect(v: string) {
     const key = v as ReportKey;
@@ -66,6 +84,10 @@ export default function ReportExportPage() {
   async function onExport() {
     if (!selected) {
       alert("请先选择一个报表！");
+      return;
+    }
+    if (needsDateRange && (!startDate || !endDate)) {
+      alert("请选择开始日期和结束日期！");
       return;
     }
     const name = exportName.trim() || defaultFileName(selected);
@@ -91,6 +113,8 @@ export default function ReportExportPage() {
           report: selected,
           export_name: name,
           event: "Download: " + selected,
+          start_date: needsDateRange ? startDate : undefined,
+          end_date: needsDateRange ? endDate : undefined,
         }),
       });
 
@@ -146,6 +170,24 @@ export default function ReportExportPage() {
             value={exportName}
             onChange={(e) => setExportName(e.target.value)}
           />
+          {needsDateRange && (
+            <div className="report-date-range">
+              <label htmlFor="reportStartDate">开始日期：</label>
+              <input
+                type="date"
+                id="reportStartDate"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              <label htmlFor="reportEndDate">结束日期：</label>
+              <input
+                type="date"
+                id="reportEndDate"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+          )}
           <button id="exportButton" onClick={onExport} disabled={loading}>
             {loading ? "生成中..." : "确认导出"}
           </button>

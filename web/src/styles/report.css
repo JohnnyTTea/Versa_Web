@@ -56,6 +56,18 @@
   color: #0f172a;
 }
 
+.report-date-range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-date-range label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
 .report-export-bar button {
   padding: 8px 12px;
   background-color: #0f172a;
@@ -488,6 +500,32 @@ table.wb-log-table td.wb-log-cmd {
 
 .dr-filters input::placeholder {
   color: rgba(255, 255, 255, 0.8);
+}
+
+.dr-filters button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #193873;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.dr-filters button:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.dr-error {
+  padding: 8px 14px;
+  border-top: 1px solid #f2c7c7;
+  background: #fff1f1;
+  color: #9f1d1d;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dr-table-wrap {
