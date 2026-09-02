@@ -8,6 +8,3 @@ Data Report: Updated Vendor and SKU sales query layout, charts, dynamic date ran
 Updates(2026-09-01):
 Report: Added AIS Sales Order Report with selectable date range.
 Data Report: Connected Vendor and SKU reports to live AIS data.
-
-Updates(2026-08-28):
-RMA Report: Updated to 2026
