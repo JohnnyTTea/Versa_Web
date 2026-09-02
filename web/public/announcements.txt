@@ -2,6 +2,8 @@
 # One line = one announcement item
 # Lines starting with # are comments and will be ignored
 
+Updates(2026-09-02):
+Data Report: Updated Vendor and SKU sales query layout, charts, dynamic date range, and sales/purchase calculation logic.
 
 Updates(2026-09-01):
 Report: Added AIS Sales Order Report with selectable date range.

@@ -1,8 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import "../../styles/report.css";
 
-const YEARS = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
-const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: 7 }, (_, idx) => CURRENT_YEAR - idx);
+const YEAR_RANGE_LABEL = `${CURRENT_YEAR - 6}-${CURRENT_YEAR}`;
+const CHART_BAR_MAX_HEIGHT = 88;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 type VendorMetrics = {
   purchaseQty: number;
@@ -33,6 +36,19 @@ type DataMonthRow = {
   salesQty: number;
   salesAmt: number;
   returnQty: number;
+  ebayQty?: number;
+  amznQty?: number;
+};
+
+type ChartMonth = {
+  year: number;
+  month: number;
+  label: string;
+};
+
+type MonthOption = {
+  value: string;
+  label: string;
 };
 
 type VendorDataResp = {
@@ -64,6 +80,65 @@ function num(v: number) {
 
 function percent(v: number) {
   return `${v.toFixed(1)}%`;
+}
+
+function formatMonthValue(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function defaultChartStartMonth() {
+  const now = new Date();
+  return formatMonthValue(new Date(now.getFullYear(), now.getMonth() - 12, 1));
+}
+
+function defaultChartEndMonth() {
+  return formatMonthValue(new Date());
+}
+
+function minChartMonth() {
+  return `${CURRENT_YEAR - 6}-01`;
+}
+
+function maxChartMonth() {
+  return defaultChartEndMonth();
+}
+
+function buildChartMonths(startValue: string, endValue: string): ChartMonth[] {
+  const startMatch = /^(\d{4})-(\d{2})$/.exec(startValue);
+  const endMatch = /^(\d{4})-(\d{2})$/.exec(endValue);
+  if (!startMatch || !endMatch) return [];
+
+  const start = new Date(Number(startMatch[1]), Number(startMatch[2]) - 1, 1);
+  const end = new Date(Number(endMatch[1]), Number(endMatch[2]) - 1, 1);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+
+  const out: ChartMonth[] = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    out.push({
+      year: cur.getFullYear(),
+      month: cur.getMonth() + 1,
+      label: `${String(cur.getMonth() + 1).padStart(2, "0")}/${String(cur.getFullYear()).slice(-2)}`,
+    });
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return out;
+}
+
+function buildMonthOptions(minValue: string, maxValue: string): MonthOption[] {
+  const months = buildChartMonths(minValue, maxValue);
+  return months.map((m) => {
+    const value = `${m.year}-${String(m.month).padStart(2, "0")}`;
+    const label = new Date(m.year, m.month - 1, 1).toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+    });
+    return { value, label };
+  });
+}
+
+function monthRowMap(rows: DataMonthRow[]) {
+  return new Map(rows.map((r) => [`${r.year}-${String(r.month).padStart(2, "0")}`, r]));
 }
 
 function emptyVendorData(): Record<number, VendorMetrics[]> {
@@ -141,6 +216,8 @@ export default function DataReportPage() {
   const [skuLoading, setSkuLoading] = useState(false);
   const [vendorErr, setVendorErr] = useState("");
   const [skuErr, setSkuErr] = useState("");
+  const [chartStartMonth, setChartStartMonth] = useState(defaultChartStartMonth);
+  const [chartEndMonth, setChartEndMonth] = useState(defaultChartEndMonth);
 
   useEffect(() => {
     if (!vendor) {
@@ -196,25 +273,47 @@ export default function DataReportPage() {
 
   const vendorData = useMemo(() => buildVendorData(vendorResp?.rows || []), [vendorResp]);
   const skuData = useMemo(() => buildSkuData(skuResp?.rows || []), [skuResp]);
-  const trend = useMemo(() => skuResp?.trend || [], [skuResp]);
+  const chartMonths = useMemo(() => buildChartMonths(chartStartMonth, chartEndMonth), [chartStartMonth, chartEndMonth]);
+  const chartMinMonth = useMemo(() => minChartMonth(), []);
+  const chartMaxMonth = useMemo(() => maxChartMonth(), []);
+  const chartMonthOptions = useMemo(() => buildMonthOptions(chartMinMonth, chartMaxMonth), [chartMinMonth, chartMaxMonth]);
+  const chartMinWidth = `${Math.max(chartMonths.length * 84, 780)}px`;
+  const vendorTrend = useMemo(() => {
+    const rows = monthRowMap(vendorResp?.rows || []);
+    return chartMonths.map((m) => {
+      const row = rows.get(`${m.year}-${String(m.month).padStart(2, "0")}`);
+      return {
+        label: m.label,
+        salesQty: Number(row?.salesQty || 0),
+      };
+    });
+  }, [vendorResp, chartMonths]);
+  const maxVendorTrend = useMemo(
+    () => vendorTrend.reduce((m, x) => Math.max(m, x.salesQty), 0),
+    [vendorTrend]
+  );
+  const trend = useMemo(() => {
+    const rows = monthRowMap(skuResp?.rows || []);
+    return chartMonths.map((m) => {
+      const row = rows.get(`${m.year}-${String(m.month).padStart(2, "0")}`);
+      return {
+        label: m.label,
+        ebay: Number(row?.ebayQty || 0),
+        amzn: Number(row?.amznQty || 0),
+        total: Number(row?.salesQty || 0),
+      };
+    });
+  }, [skuResp, chartMonths]);
 
   const maxTrend = useMemo(() => trend.reduce((m, x) => Math.max(m, x.total), 0), [trend]);
-  const trendLine = useMemo(() => {
-    if (!trend.length || maxTrend <= 0) return "";
-    return trend
-      .map((p, idx) => {
-        const x = ((idx + 0.5) / trend.length) * 100;
-        const y = 100 - (p.total / maxTrend) * 100;
-        return `${idx === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-      })
-      .join(" ");
-  }, [trend, maxTrend]);
+  const vendorChartName = vendorResp?.vendor?.Company || vendorResp?.vendor?.Compno || vendor || "-";
+  const skuChartName = skuResp?.item?.Itemno || sku || "-";
 
   return (
     <div className="dr-page progressive-enter">
       <section className="dr-section">
         <div className="dr-header">
-          <h2>Vendor 销量查询 (2020-2026)</h2>
+          <h2>Vendor Sales Query ({YEAR_RANGE_LABEL})</h2>
           <div className="dr-entity-current">
             Vendor: <strong>{vendorResp?.vendor?.Compno || vendor || "-"}</strong>
             {vendorResp?.vendor?.Company ? ` · ${vendorResp.vendor.Company}` : ""}
@@ -228,38 +327,58 @@ export default function DataReportPage() {
           >
             <label htmlFor="vendor">Vendor</label>
             <input id="vendor" value={vendorInput} onChange={(e) => setVendorInput(e.target.value)} />
-            <button type="submit" disabled={vendorLoading}>{vendorLoading ? "Loading" : "查询"}</button>
+            <button type="submit" disabled={vendorLoading}>{vendorLoading ? "Loading" : "Search"}</button>
           </form>
         </div>
         {vendorErr ? <div className="dr-error">{vendorErr}</div> : null}
 
-        <div className="dr-table-wrap">
-          <table className="dr-table">
+        <div className="dr-table-frame">
+          <table className="dr-month-table" aria-hidden="true">
             <thead>
               <tr>
-                <th rowSpan={2} className="dr-sticky-col">月份</th>
-                {YEARS.map((y) => (
-                  <th key={y} colSpan={4}>{y}年</th>
-                ))}
-              </tr>
-              <tr>
-                {YEARS.map((y) => (
-                  <FragmentCols key={y} prefix={`vendor-${y}`} labels={["购入 Qty", "购入 Amt", "售出 Qty", "售出 Amt"]} />
-                ))}
+                <th>Month</th>
               </tr>
             </thead>
             <tbody>
+              {MONTHS.map((month) => (
+                <tr key={month}>
+                  <th>{month}</th>
+                </tr>
+              ))}
+              <tr className="dr-summary">
+                <th>Total</th>
+              </tr>
+              <tr className="dr-summary">
+                <th>Average</th>
+              </tr>
+            </tbody>
+          </table>
+
+          <div className="dr-table-wrap">
+            <table className="dr-table">
+              <thead>
+                <tr>
+                {YEARS.map((y) => (
+                  <th key={y} colSpan={4}>{y}</th>
+                ))}
+                </tr>
+                <tr>
+                {YEARS.map((y) => (
+                  <FragmentCols key={y} prefix={`vendor-${y}`} labels={["Pur. Qty", "Pur. Amt", "Sales Qty", "Sales Amt"]} />
+                ))}
+                </tr>
+              </thead>
+              <tbody>
               {MONTHS.map((month, i) => (
                 <tr key={month}>
-                  <th className="dr-sticky-col">{month}</th>
                   {YEARS.map((y) => {
                     const row = vendorData[y][i];
                     return (
                       <Fragment key={`${y}-${month}`}>
-                        <td key={`${y}-${month}-pq`}>{num(row.purchaseQty)}</td>
-                        <td key={`${y}-${month}-pa`}>{currency(row.purchaseAmt)}</td>
-                        <td key={`${y}-${month}-sq`}>{num(row.salesQty)}</td>
-                        <td key={`${y}-${month}-sa`}>{currency(row.salesAmt)}</td>
+                        <td className="dr-purchase-cell" key={`${y}-${month}-pq`}>{num(row.purchaseQty)}</td>
+                        <td className="dr-purchase-cell" key={`${y}-${month}-pa`}>{currency(row.purchaseAmt)}</td>
+                        <td className="dr-sales-cell" key={`${y}-${month}-sq`}>{num(row.salesQty)}</td>
+                        <td className="dr-sales-cell" key={`${y}-${month}-sa`}>{currency(row.salesAmt)}</td>
                       </Fragment>
                     );
                   })}
@@ -267,7 +386,6 @@ export default function DataReportPage() {
               ))}
 
               <tr className="dr-summary">
-                <th className="dr-sticky-col">Total</th>
                 {YEARS.map((y) => {
                   const total = vendorData[y].reduce(
                     (acc, r) => ({
@@ -280,17 +398,16 @@ export default function DataReportPage() {
                   );
                   return (
                     <Fragment key={`${y}-total`}>
-                      <td key={`${y}-tpq`}>{num(total.purchaseQty)}</td>
-                      <td key={`${y}-tpa`}>{currency(total.purchaseAmt)}</td>
-                      <td key={`${y}-tsq`}>{num(total.salesQty)}</td>
-                      <td key={`${y}-tsa`}>{currency(total.salesAmt)}</td>
+                      <td className="dr-purchase-cell" key={`${y}-tpq`}>{num(total.purchaseQty)}</td>
+                      <td className="dr-purchase-cell" key={`${y}-tpa`}>{currency(total.purchaseAmt)}</td>
+                      <td className="dr-sales-cell" key={`${y}-tsq`}>{num(total.salesQty)}</td>
+                      <td className="dr-sales-cell" key={`${y}-tsa`}>{currency(total.salesAmt)}</td>
                     </Fragment>
                   );
                 })}
               </tr>
 
               <tr className="dr-summary">
-                <th className="dr-sticky-col">Average</th>
                 {YEARS.map((y) => {
                   const avg = vendorData[y].reduce(
                     (acc, r) => ({
@@ -303,22 +420,56 @@ export default function DataReportPage() {
                   );
                   return (
                     <Fragment key={`${y}-avg`}>
-                      <td key={`${y}-apq`}>{num(avg.purchaseQty)}</td>
-                      <td key={`${y}-apa`}>{currency(avg.purchaseAmt)}</td>
-                      <td key={`${y}-asq`}>{num(avg.salesQty)}</td>
-                      <td key={`${y}-asa`}>{currency(avg.salesAmt)}</td>
+                      <td className="dr-purchase-cell" key={`${y}-apq`}>{num(avg.purchaseQty)}</td>
+                      <td className="dr-purchase-cell" key={`${y}-apa`}>{currency(avg.purchaseAmt)}</td>
+                      <td className="dr-sales-cell" key={`${y}-asq`}>{num(avg.salesQty)}</td>
+                      <td className="dr-sales-cell" key={`${y}-asa`}>{currency(avg.salesAmt)}</td>
                     </Fragment>
                   );
                 })}
               </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="dr-chart-card">
+          <div className="dr-chart-head">
+            <div className="dr-chart-title">Vendor Sales Trend <span>Sales Volume</span></div>
+            <ChartRangeControls
+              start={chartStartMonth}
+              end={chartEndMonth}
+              options={chartMonthOptions}
+              onStart={setChartStartMonth}
+              onEnd={setChartEndMonth}
+            />
+          </div>
+          <div className="dr-chart-legend">
+            <span><i className="dr-dot dr-vendor-sales" />Sales Qty</span>
+          </div>
+          <div className="dr-chart-entity-title" style={{ minWidth: chartMinWidth }}>{vendorChartName}</div>
+          <div className="dr-chart dr-chart-vendor" style={{ minWidth: chartMinWidth }}>
+            {vendorTrend.map((m) => {
+              const height = maxVendorTrend > 0 ? (m.salesQty / maxVendorTrend) * CHART_BAR_MAX_HEIGHT : 0;
+              return (
+                <div className="dr-bar-col" key={m.label}>
+                  <div className="dr-bar-wrap" title={`${m.label}: Sales ${num(m.salesQty)}`}>
+                    <div className="dr-bar-stack">
+                      <div className="dr-bar-value">{num(m.salesQty)}</div>
+                      <div className="dr-bar dr-vendor-sales" style={{ height: `${height}%` }} />
+                    </div>
+                  </div>
+                  <div className="dr-bar-label">{m.label}</div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 
       <section className="dr-section">
         <div className="dr-header">
-          <h2>SKU 销量查询 (2020-2026)</h2>
+          <h2>SKU Sales Query ({YEAR_RANGE_LABEL})</h2>
           <div className="dr-entity-current">
             SKU: <strong>{skuResp?.item?.Itemno || sku || "-"}</strong>
             {skuResp?.item?.Vendno ? ` · Vendor ${skuResp.item.Vendno}` : ""}
@@ -332,36 +483,53 @@ export default function DataReportPage() {
           >
             <label htmlFor="sku">SKU</label>
             <input id="sku" value={skuInput} onChange={(e) => setSkuInput(e.target.value)} />
-            <button type="submit" disabled={skuLoading}>{skuLoading ? "Loading" : "查询"}</button>
+            <button type="submit" disabled={skuLoading}>{skuLoading ? "Loading" : "Search"}</button>
           </form>
         </div>
         {skuErr ? <div className="dr-error">{skuErr}</div> : null}
 
-        <div className="dr-table-wrap">
-          <table className="dr-table">
+        <div className="dr-table-frame">
+          <table className="dr-month-table" aria-hidden="true">
             <thead>
               <tr>
-                <th rowSpan={2} className="dr-sticky-col">月份</th>
-                {YEARS.map((y) => (
-                  <th key={y} colSpan={4}>{y}年</th>
-                ))}
-              </tr>
-              <tr>
-                {YEARS.map((y) => (
-                  <FragmentCols key={y} prefix={`sku-${y}`} labels={["购入 Qty", "售出 Qty", "售后 Qty", "售后率"]} />
-                ))}
+                <th>Month</th>
               </tr>
             </thead>
             <tbody>
+              {MONTHS.map((month) => (
+                <tr key={month}>
+                  <th>{month}</th>
+                </tr>
+              ))}
+              <tr className="dr-summary">
+                <th>Total</th>
+              </tr>
+            </tbody>
+          </table>
+
+          <div className="dr-table-wrap">
+            <table className="dr-table">
+              <thead>
+                <tr>
+                {YEARS.map((y) => (
+                  <th key={y} colSpan={4}>{y}</th>
+                ))}
+                </tr>
+                <tr>
+                {YEARS.map((y) => (
+                  <FragmentCols key={y} prefix={`sku-${y}`} labels={["Pur. Qty", "Sales Qty", "Return", "Return Rate"]} />
+                ))}
+                </tr>
+              </thead>
+              <tbody>
               {MONTHS.map((month, i) => (
                 <tr key={month}>
-                  <th className="dr-sticky-col">{month}</th>
                   {YEARS.map((y) => {
                     const row = skuData[y][i];
                     return (
                       <Fragment key={`${y}-${month}`}>
-                        <td key={`${y}-${month}-pq`}>{num(row.purchaseQty)}</td>
-                        <td key={`${y}-${month}-sq`}>{num(row.soldQty)}</td>
+                        <td className="dr-purchase-cell" key={`${y}-${month}-pq`}>{num(row.purchaseQty)}</td>
+                        <td className="dr-sales-cell" key={`${y}-${month}-sq`}>{num(row.soldQty)}</td>
                         <td key={`${y}-${month}-rq`}>{num(row.returnQty)}</td>
                         <td key={`${y}-${month}-rr`}>{percent(row.returnRate)}</td>
                       </Fragment>
@@ -371,7 +539,6 @@ export default function DataReportPage() {
               ))}
 
               <tr className="dr-summary">
-                <th className="dr-sticky-col">Total</th>
                 {YEARS.map((y) => {
                   const total = skuData[y].reduce(
                     (acc, r) => ({
@@ -384,37 +551,56 @@ export default function DataReportPage() {
                   const rr = total.soldQty > 0 ? (total.returnQty / total.soldQty) * 100 : 0;
                   return (
                     <Fragment key={`${y}-total`}>
-                      <td key={`${y}-tpq`}>{num(total.purchaseQty)}</td>
-                      <td key={`${y}-tsq`}>{num(total.soldQty)}</td>
+                      <td className="dr-purchase-cell" key={`${y}-tpq`}>{num(total.purchaseQty)}</td>
+                      <td className="dr-sales-cell" key={`${y}-tsq`}>{num(total.soldQty)}</td>
                       <td key={`${y}-trq`}>{num(total.returnQty)}</td>
                       <td key={`${y}-trr`}>{percent(rr)}</td>
                     </Fragment>
                   );
                 })}
               </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="dr-chart-card">
-          <div className="dr-chart-title">过去13个月销量趋势 (柱状 + 折线)</div>
+          <div className="dr-chart-head">
+            <div className="dr-chart-title">SKU Sales Trend <span>Sales Volume</span></div>
+            <ChartRangeControls
+              start={chartStartMonth}
+              end={chartEndMonth}
+              options={chartMonthOptions}
+              onStart={setChartStartMonth}
+              onEnd={setChartEndMonth}
+            />
+          </div>
           <div className="dr-chart-legend">
             <span><i className="dr-dot dr-ebay" />eBay</span>
             <span><i className="dr-dot dr-amzn" />AMZN</span>
             <span><i className="dr-dot dr-total" />Total</span>
           </div>
-          <div className="dr-chart">
-            <svg className="dr-line" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <path d={trendLine} />
-            </svg>
+          <div className="dr-chart-entity-title" style={{ minWidth: chartMinWidth }}>{skuChartName}</div>
+          <div className="dr-chart" style={{ minWidth: chartMinWidth }}>
             {trend.map((m) => {
-              const ebayH = maxTrend > 0 ? (m.ebay / maxTrend) * 100 : 0;
-              const amznH = maxTrend > 0 ? (m.amzn / maxTrend) * 100 : 0;
+              const ebayH = maxTrend > 0 ? (m.ebay / maxTrend) * CHART_BAR_MAX_HEIGHT : 0;
+              const amznH = maxTrend > 0 ? (m.amzn / maxTrend) * CHART_BAR_MAX_HEIGHT : 0;
+              const totalH = maxTrend > 0 ? (m.total / maxTrend) * CHART_BAR_MAX_HEIGHT : 0;
               return (
                 <div className="dr-bar-col" key={m.label}>
                   <div className="dr-bar-wrap" title={`${m.label}: eBay ${m.ebay} / AMZN ${m.amzn} / Total ${m.total}`}>
-                    <div className="dr-bar dr-ebay" style={{ height: `${ebayH}%` }} />
-                    <div className="dr-bar dr-amzn" style={{ height: `${amznH}%` }} />
+                    <div className="dr-bar-stack">
+                      <div className="dr-bar-value">{num(m.ebay)}</div>
+                      <div className="dr-bar dr-ebay" style={{ height: `${ebayH}%` }} />
+                    </div>
+                    <div className="dr-bar-stack">
+                      <div className="dr-bar-value">{num(m.amzn)}</div>
+                      <div className="dr-bar dr-amzn" style={{ height: `${amznH}%` }} />
+                    </div>
+                    <div className="dr-bar-stack">
+                      <div className="dr-bar-value">{num(m.total)}</div>
+                      <div className="dr-bar dr-total" style={{ height: `${totalH}%` }} />
+                    </div>
                   </div>
                   <div className="dr-bar-label">{m.label}</div>
                 </div>
@@ -434,5 +620,45 @@ function FragmentCols({ labels, prefix }: { labels: string[]; prefix: string }) 
         <th key={`${prefix}-${label}`}>{label}</th>
       ))}
     </>
+  );
+}
+
+function ChartRangeControls(props: {
+  start: string;
+  end: string;
+  options: MonthOption[];
+  onStart: (v: string) => void;
+  onEnd: (v: string) => void;
+}) {
+  const startOptions = props.options.filter((option) => option.value <= props.end);
+  const endOptions = props.options.filter((option) => option.value >= props.start);
+
+  return (
+    <div className="dr-chart-range">
+      <span className="dr-chart-range-title">Date Range</span>
+      <label>
+        From
+        <select
+          value={props.start}
+          onChange={(e) => props.onStart(e.target.value)}
+        >
+          {startOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+      <span className="dr-chart-range-sep">-</span>
+      <label>
+        To
+        <select
+          value={props.end}
+          onChange={(e) => props.onEnd(e.target.value)}
+        >
+          {endOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+    </div>
   );
 }

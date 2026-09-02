@@ -34,7 +34,6 @@ export class ReportService {
   constructor(private readonly db: MysqlService) {}
 
   private baseDir = path.join(process.cwd(), 'tmp', 'report');
-  private dataReportYears = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
 
   private async ensureDir() {
     await fs.mkdir(this.baseDir, { recursive: true });
@@ -104,12 +103,18 @@ export class ReportService {
   }
 
   private dataReportRange() {
-    const startYear = this.dataReportYears[0];
-    const endYear = this.dataReportYears[this.dataReportYears.length - 1];
+    const years = this.dataReportYears();
+    const startYear = Math.min(...years);
+    const endYear = Math.max(...years);
     return {
       startDate: `${startYear}-01-01`,
       endDate: `${endYear + 1}-01-01`,
     };
+  }
+
+  private dataReportYears() {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 7 }, (_, idx) => currentYear - 6 + idx);
   }
 
   private monthKey(year: number, month: number) {
@@ -117,7 +122,7 @@ export class ReportService {
   }
 
   private emptyDataMonthRows(): DataMonthRow[] {
-    return this.dataReportYears.flatMap((year) =>
+    return this.dataReportYears().flatMap((year) =>
       Array.from({ length: 12 }, (_, i) => ({
         year,
         month: i + 1,
@@ -591,13 +596,13 @@ export class ReportService {
         `
         SELECT yy, mm, SUM(purchaseQty) AS purchaseQty, SUM(purchaseAmt) AS purchaseAmt
         FROM (
-          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
-          FROM aisdata1.poinvl
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Tpieces) AS purchaseQty, SUM(Totamt) AS purchaseAmt
+          FROM aisdata1.poinv
           WHERE Compno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
           GROUP BY yy, mm
           UNION ALL
-          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
-          FROM aisdata5.poinvl
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Tpieces) AS purchaseQty, SUM(Totamt) AS purchaseAmt
+          FROM aisdata5.poinv
           WHERE Compno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
           GROUP BY yy, mm
         ) p
@@ -610,13 +615,21 @@ export class ReportService {
         `
         SELECT yy, mm, SUM(salesQty) AS salesQty, SUM(salesAmt) AS salesAmt
         FROM (
-          SELECT YEAR(s.Trdate) AS yy, MONTH(s.Trdate) AS mm, SUM(s.Ordqty) AS salesQty, SUM(s.Ordqty * s.Price) AS salesAmt
+          SELECT
+            YEAR(s.Trdate) AS yy,
+            MONTH(s.Trdate) AS mm,
+            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty ELSE 0 END) AS salesQty,
+            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty * s.Price ELSE 0 END) AS salesAmt
           FROM aisdata0.item i
           STRAIGHT_JOIN aisdata1.sainvl s ON s.Itemno = i.Itemno
           WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate >= ?
           GROUP BY yy, mm
           UNION ALL
-          SELECT YEAR(s.Trdate) AS yy, MONTH(s.Trdate) AS mm, SUM(s.Ordqty) AS salesQty, SUM(s.Ordqty * s.Price) AS salesAmt
+          SELECT
+            YEAR(s.Trdate) AS yy,
+            MONTH(s.Trdate) AS mm,
+            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty ELSE 0 END) AS salesQty,
+            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty * s.Price ELSE 0 END) AS salesAmt
           FROM aisdata0.item i
           STRAIGHT_JOIN aisdata5.sainvl s ON s.Itemno = i.Itemno
           WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate < ?
@@ -718,12 +731,20 @@ export class ReportService {
         `
         SELECT yy, mm, SUM(salesQty) AS salesQty, SUM(salesAmt) AS salesAmt
         FROM (
-          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS salesQty, SUM(Ordqty * Price) AS salesAmt
+          SELECT
+            YEAR(Trdate) AS yy,
+            MONTH(Trdate) AS mm,
+            SUM(CASE WHEN Ordqty > 0 THEN 1 ELSE 0 END) AS salesQty,
+            SUM(CASE WHEN Ordqty > 0 THEN Ordqty * Price ELSE 0 END) AS salesAmt
           FROM aisdata1.sainvl
           WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
           GROUP BY yy, mm
           UNION ALL
-          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS salesQty, SUM(Ordqty * Price) AS salesAmt
+          SELECT
+            YEAR(Trdate) AS yy,
+            MONTH(Trdate) AS mm,
+            SUM(CASE WHEN Ordqty > 0 THEN 1 ELSE 0 END) AS salesQty,
+            SUM(CASE WHEN Ordqty > 0 THEN Ordqty * Price ELSE 0 END) AS salesAmt
           FROM aisdata5.sainvl
           WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
           GROUP BY yy, mm
@@ -761,8 +782,8 @@ export class ReportService {
           SELECT
             YEAR(s.Trdate) AS yy,
             MONTH(s.Trdate) AS mm,
-            SUM(CASE WHEN v.Trorig1 = 'EBAY' THEN s.Ordqty ELSE 0 END) AS ebayQty,
-            SUM(CASE WHEN v.Trorig1 = 'AMZN' THEN s.Ordqty ELSE 0 END) AS amznQty
+            SUM(CASE WHEN v.Trorig1 = 'EBAY' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS ebayQty,
+            SUM(CASE WHEN v.Trorig1 = 'AMZN' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS amznQty
           FROM aisdata1.sainvl s
           LEFT JOIN aisdata1.sainv v ON v.Trno = s.Trno
           WHERE s.Itemno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate >= ?
@@ -771,8 +792,8 @@ export class ReportService {
           SELECT
             YEAR(s.Trdate) AS yy,
             MONTH(s.Trdate) AS mm,
-            SUM(CASE WHEN v.Trorig1 = 'EBAY' THEN s.Ordqty ELSE 0 END) AS ebayQty,
-            SUM(CASE WHEN v.Trorig1 = 'AMZN' THEN s.Ordqty ELSE 0 END) AS amznQty
+            SUM(CASE WHEN v.Trorig1 = 'EBAY' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS ebayQty,
+            SUM(CASE WHEN v.Trorig1 = 'AMZN' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS amznQty
           FROM aisdata5.sainvl s
           LEFT JOIN aisdata5.sainv v ON v.Trno = s.Trno
           WHERE s.Itemno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate < ?
