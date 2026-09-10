@@ -241,13 +241,23 @@
 .user-table:not(.role-table) th:nth-child(1),
 .user-table:not(.role-table) td:nth-child(1) { width: 50px; }
 .user-table:not(.role-table) th:nth-child(2),
-.user-table:not(.role-table) td:nth-child(2) { width: 200px; }
+.user-table:not(.role-table) td:nth-child(2) {
+  width: 133px;
+  min-width: 133px;
+  max-width: 133px;
+  overflow: hidden;
+}
 .user-table:not(.role-table) th:nth-child(3),
-.user-table:not(.role-table) td:nth-child(3) { width: 200px; }
+.user-table:not(.role-table) td:nth-child(3) { width: 150px; }
 .user-table:not(.role-table) th:nth-child(4),
 .user-table:not(.role-table) td:nth-child(4),
 .user-table:not(.role-table) th:nth-child(5),
-.user-table:not(.role-table) td:nth-child(5) { width: 200px; }
+.user-table:not(.role-table) td:nth-child(5) {
+  width: 133px;
+  min-width: 133px;
+  max-width: 133px;
+  overflow: hidden;
+}
 .user-table:not(.role-table) th:nth-child(6),
 .user-table:not(.role-table) td:nth-child(6) { width: 160px; }
 .user-table:not(.role-table) th:nth-child(7),
@@ -258,6 +268,21 @@
 .user-table:not(.role-table) td:nth-child(9) { width: 150px; }
 .user-table:not(.role-table) th:nth-child(10),
 .user-table:not(.role-table) td:nth-child(10) { width: 130px; }
+
+.user-table:not(.role-table) td:nth-child(2) input,
+.user-table:not(.role-table) td:nth-child(4) input,
+.user-table:not(.role-table) td:nth-child(5) input,
+.user-table:not(.role-table) td:nth-child(3) .password-field {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.user-table:not(.role-table) td:nth-child(2) input,
+.user-table:not(.role-table) td:nth-child(4) input,
+.user-table:not(.role-table) td:nth-child(5) input {
+  display: block;
+}
 
 /* ===== Inputs / Selects ===== */
 .user-table input[type="text"],

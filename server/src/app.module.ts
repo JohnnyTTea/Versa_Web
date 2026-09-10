@@ -11,6 +11,7 @@ import { DtoModule } from './dto/dto.module';
 import { ModifyModule } from './modify/modify.module';
 import { ReportModule } from './report/report.module';
 import { PurchaseModule } from './purchase/purchase.module';
+import { MonitorModule } from './monitor/monitor.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PurchaseModule } from './purchase/purchase.module';
     ModifyModule,
     ReportModule,
     PurchaseModule,
+    MonitorModule,
     UsersModule,
     RolesModule,
     LogModule,

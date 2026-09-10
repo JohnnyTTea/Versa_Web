@@ -40,6 +40,14 @@ function money(v: number | null | undefined, digits = 2) {
   }).format(v);
 }
 
+function preferredCost(product: Product | null) {
+  const promoPrice = Number(product?.Prprice);
+  if (Number.isFinite(promoPrice) && promoPrice > 0) return promoPrice;
+
+  const cost = Number(product?.Cost);
+  return Number.isFinite(cost) ? cost : null;
+}
+
 function numMoney(v: any, digits = 2) {
   const n = Number(v);
   if (!Number.isFinite(n)) return "";
@@ -162,9 +170,7 @@ export default function ProductPage() {
           setOnhand(sJson.onhand || null);
           setProductCache(id, "summary-basic", sJson);
 
-          // 后端目前没有 lastCost 字段，先用 product.Cost 顶一下
-          const costN = Number(sJson?.product?.Cost);
-          setLastCost(Number.isFinite(costN) ? costN : null);
+          setLastCost(preferredCost(sJson.product || null));
         }
 
         // 2) 价格异步（不阻塞主信息栏）

@@ -69,10 +69,19 @@
   margin: 12px 6px 8px;
 }
 
-.sidebar-title {
+.sidebar-title,
+.home-title-link {
   font-weight: 1000;
   letter-spacing: 0.06em;
   text-align: center;
+}
+
+.home-title-link {
+  color: #0a1628;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .sidebar ul {
@@ -115,6 +124,19 @@
 .sidebar .home-link {
   font-weight: 600;
   font-size: 20px;
+  letter-spacing: 0;
+}
+
+.sidebar-module-wrap {
+  display: block;
+  margin: 0 8px;
+  padding: 6px 12px;
+}
+
+.sidebar-module-label {
+  color: #3f5170;
+  font-size: 20px;
+  font-weight: 600;
   letter-spacing: 0;
 }
 

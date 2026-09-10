@@ -50,21 +50,24 @@ export default function Sidebar() {
     nav(fallbackTo);
   };
   const isHomePage = loc.pathname === "/";
+  const activeModuleLabel = activeModule
+    ? activeModule.charAt(0).toUpperCase() + activeModule.slice(1)
+    : "";
 
   return (
     <aside className={`sidebar${collapsed ? " collapsed" : ""}`}>
       <div className="sidebar-title-panel">
-        <strong className="sidebar-label sidebar-title">
-          {activeModule ? activeModule.toUpperCase() : "HOME"}
-        </strong>
+        <NavLink to="/" end className={({ isActive }) => `home-title-link ${isActive ? "active" : ""}`}>
+          {collapsed ? "🏠" : <span className="sidebar-label">🏠 HOME</span>}
+        </NavLink>
       </div>
 
       <div className="sidebar-menu-panel">
-        <div className="sidebar-home-wrap">
-          <NavLink to="/" end className={({ isActive }) => `home-link ${isActive ? "active" : ""}`}>
-            {collapsed ? "🏠" : <span className="sidebar-label">🏠 Home</span>}
-          </NavLink>
-        </div>
+        {activeModuleLabel ? (
+          <div className="sidebar-module-wrap">
+            <span className="sidebar-label sidebar-module-label">{activeModuleLabel}</span>
+          </div>
+        ) : null}
 
         {!isHomePage ? (
           <div className="sidebar-nav-back-wrap">
