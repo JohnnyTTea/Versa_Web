@@ -63,24 +63,21 @@ foreach ($processId in $processIds) {
 }
 
 Step "Start server"
-$npmCmd = Get-Command npm.cmd -ErrorAction SilentlyContinue
-if ($npmCmd) {
-  $npm = $npmCmd.Source
-}
-if (-not $npm) {
-  $npm = (Get-Command npm -ErrorAction Stop).Source
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if (-not $nodeCmd) {
+  throw "node was not found on PATH"
 }
 
 $proc = Start-Process `
-  -FilePath $npm `
-  -ArgumentList @("run", "start:prod") `
+  -FilePath $nodeCmd.Source `
+  -ArgumentList @("dist/main") `
   -WorkingDirectory $serverDir `
   -WindowStyle Hidden `
   -RedirectStandardOutput $serverOutLog `
   -RedirectStandardError $serverErrLog `
   -PassThru
 
-Write-Host "Started server PID $($proc.Id)"
+Write-Host "Started server PID $($proc.Id) via node dist/main"
 
 $serverRunning = $null
 for ($i = 1; $i -le 30; $i++) {
