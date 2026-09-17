@@ -103,13 +103,33 @@ export class ReportService {
   }
 
   private dataReportRange() {
-    const years = this.dataReportYears();
-    const startYear = Math.min(...years);
-    const endYear = Math.max(...years);
+    const now = new Date();
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const start = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), 1));
     return {
-      startDate: `${startYear}-01-01`,
-      endDate: `${endYear + 1}-01-01`,
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
     };
+  }
+
+  private splitSourceRange(startDate: string, endDate: string) {
+    const recentStart = startDate >= AIS_CUTOVER_DATE ? startDate : AIS_CUTOVER_DATE;
+    const recentEnd = endDate > AIS_CUTOVER_DATE ? endDate : null;
+
+    const historicalStart = startDate < AIS_CUTOVER_DATE ? startDate : null;
+    const historicalEnd = endDate <= AIS_CUTOVER_DATE ? endDate : AIS_CUTOVER_DATE;
+
+    const recent =
+      recentEnd && recentStart < recentEnd
+        ? { startDate: recentStart, endDate: recentEnd }
+        : null;
+
+    const historical =
+      historicalStart && historicalStart < historicalEnd
+        ? { startDate: historicalStart, endDate: historicalEnd }
+        : null;
+
+    return { recent, historical };
   }
 
   private dataReportYears() {
@@ -175,6 +195,100 @@ export class ReportService {
     }
 
     return Array.from(map.values());
+  }
+
+  private buildSkuSourceMetricsSql(schema: 'aisdata1' | 'aisdata5') {
+    return `
+      SELECT
+        YEAR(monthly.Trdate) AS yy,
+        MONTH(monthly.Trdate) AS mm,
+        COALESCE(SUM(monthly.purchaseQty), 0) AS purchaseQty,
+        COALESCE(SUM(monthly.purchaseAmt), 0) AS purchaseAmt,
+        COALESCE(SUM(monthly.salesQty), 0) AS salesQty,
+        COALESCE(SUM(monthly.salesAmt), 0) AS salesAmt,
+        COALESCE(SUM(monthly.returnQty), 0) AS returnQty,
+        COALESCE(SUM(monthly.ebayQty), 0) AS ebayQty,
+        COALESCE(SUM(monthly.amznQty), 0) AS amznQty
+      FROM (
+        SELECT
+          p.Trdate,
+          p.Itemno,
+          SUM(p.Ordqty) AS purchaseQty,
+          SUM(p.Lnamt) AS purchaseAmt,
+          0 AS salesQty,
+          0 AS salesAmt,
+          0 AS returnQty,
+          0 AS ebayQty,
+          0 AS amznQty
+        FROM ${schema}.poinvl p
+        WHERE p.Itemno = ? AND p.Trdate >= ? AND p.Trdate < ?
+        GROUP BY p.Trdate
+
+        UNION ALL
+
+        SELECT
+          s.Trdate,
+          s.Itemno,
+          0 AS purchaseQty,
+          0 AS purchaseAmt,
+          SUM(CASE WHEN s.Ordqty > 0 THEN 1 ELSE 0 END) AS salesQty,
+          SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty * s.Price ELSE 0 END) AS salesAmt,
+          0 AS returnQty,
+          SUM(CASE WHEN v.Trorig1 = 'EBAY' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS ebayQty,
+          SUM(CASE WHEN v.Trorig1 = 'AMZN' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS amznQty
+        FROM ${schema}.sainvl s
+        LEFT JOIN ${schema}.sainv v ON v.Trno = s.Trno
+        WHERE s.Itemno = ? AND s.Trdate >= ? AND s.Trdate < ?
+        GROUP BY s.Trdate
+
+        UNION ALL
+
+        SELECT
+          m.Trdate,
+          l.Itemno,
+          0 AS purchaseQty,
+          0 AS purchaseAmt,
+          0 AS salesQty,
+          0 AS salesAmt,
+          COUNT(*) AS returnQty,
+          0 AS ebayQty,
+          0 AS amznQty
+        FROM ${schema}.samemo m
+        JOIN ${schema}.sainvl l ON m.Invno = l.Trno
+        WHERE l.Itemno = ? AND m.Trdate >= ? AND m.Trdate < ?
+        GROUP BY m.Trdate, l.Itemno
+      ) AS monthly
+      WHERE monthly.Itemno = ?
+      GROUP BY yy, mm
+      ORDER BY yy, mm
+    `;
+  }
+
+  private async querySkuSourceMetrics(
+    schema: 'aisdata1' | 'aisdata5',
+    itemId: string,
+    startDate: string,
+    endDate: string,
+  ) {
+    const sql = this.buildSkuSourceMetricsSql(schema);
+
+    const rows = await this.db.query<any>(
+      schema,
+      sql,
+      [itemId, startDate, endDate, itemId, startDate, endDate, itemId, startDate, endDate, itemId],
+    );
+
+    return rows.map((r) => ({
+      yy: Number(r.yy),
+      mm: Number(r.mm),
+      purchaseQty: Number(r.purchaseQty || 0),
+      purchaseAmt: Number(r.purchaseAmt || 0),
+      salesQty: Number(r.salesQty || 0),
+      salesAmt: Number(r.salesAmt || 0),
+      returnQty: Number(r.returnQty || 0),
+      ebayQty: Number(r.ebayQty || 0),
+      amznQty: Number(r.amznQty || 0),
+    }));
   }
 
   private parseDateRange(options?: GenerateOptions) {
@@ -558,6 +672,8 @@ export class ReportService {
 
   async getDataReportVendor(vendorId: string) {
     const { startDate, endDate } = this.dataReportRange();
+    const { recent, historical } = this.splitSourceRange(startDate, endDate);
+
     const vendorRows = await this.db.query<any>(
       'aisdata1',
       `
@@ -579,89 +695,102 @@ export class ReportService {
       };
     }
 
-    const splitParams = [
-      vendorId,
-      startDate,
-      endDate,
-      AIS_CUTOVER_DATE,
-      vendorId,
-      startDate,
-      endDate,
-      AIS_CUTOVER_DATE,
-    ];
+    const purchaseRangeQueries = [] as Promise<any[]>[];
+    const salesRangeQueries = [] as Promise<any[]>[];
+    const returnRangeQueries = [] as Promise<any[]>[];
 
-    const [purchaseRows, salesRows, returnRows] = await Promise.all([
-      this.db.query<any>(
-        'aisdata1',
-        `
-        SELECT yy, mm, SUM(purchaseQty) AS purchaseQty, SUM(purchaseAmt) AS purchaseAmt
-        FROM (
-          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Tpieces) AS purchaseQty, SUM(Totamt) AS purchaseAmt
-          FROM aisdata1.poinv
-          WHERE Compno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
-          GROUP BY yy, mm
-          UNION ALL
+    if (historical) {
+      purchaseRangeQueries.push(
+        this.db.query<any>(
+          'aisdata5',
+          `
           SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Tpieces) AS purchaseQty, SUM(Totamt) AS purchaseAmt
           FROM aisdata5.poinv
-          WHERE Compno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
+          WHERE Compno = ? AND Trdate >= ? AND Trdate < ?
           GROUP BY yy, mm
-        ) p
-        GROUP BY yy, mm
-        `,
-        splitParams,
-      ),
-      this.db.query<any>(
-        'aisdata1',
-        `
-        SELECT yy, mm, SUM(salesQty) AS salesQty, SUM(salesAmt) AS salesAmt
-        FROM (
-          SELECT
-            YEAR(s.Trdate) AS yy,
-            MONTH(s.Trdate) AS mm,
-            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty ELSE 0 END) AS salesQty,
-            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty * s.Price ELSE 0 END) AS salesAmt
-          FROM aisdata0.item i
-          STRAIGHT_JOIN aisdata1.sainvl s ON s.Itemno = i.Itemno
-          WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate >= ?
-          GROUP BY yy, mm
-          UNION ALL
-          SELECT
-            YEAR(s.Trdate) AS yy,
-            MONTH(s.Trdate) AS mm,
-            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty ELSE 0 END) AS salesQty,
-            SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty * s.Price ELSE 0 END) AS salesAmt
+          `,
+          [vendorId, historical.startDate, historical.endDate],
+        ),
+      );
+      salesRangeQueries.push(
+        this.db.query<any>(
+          'aisdata5',
+          `
+          SELECT YEAR(s.Trdate) AS yy, MONTH(s.Trdate) AS mm,
+                 SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty ELSE 0 END) AS salesQty,
+                 SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty * s.Price ELSE 0 END) AS salesAmt
           FROM aisdata0.item i
           STRAIGHT_JOIN aisdata5.sainvl s ON s.Itemno = i.Itemno
-          WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate < ?
+          WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ?
           GROUP BY yy, mm
-        ) s
-        GROUP BY yy, mm
-        `,
-        splitParams,
-      ),
-      this.db.query<any>(
-        'aisdata1',
-        `
-        SELECT yy, mm, SUM(returnQty) AS returnQty
-        FROM (
-          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
-          FROM aisdata0.item i
-          STRAIGHT_JOIN aisdata1.sainvl l ON l.Itemno = i.Itemno
-          JOIN aisdata1.samemo m ON m.Invno = l.Trno
-          WHERE i.Vendno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate >= ?
-          GROUP BY yy, mm
-          UNION ALL
+          `,
+          [vendorId, historical.startDate, historical.endDate],
+        ),
+      );
+      returnRangeQueries.push(
+        this.db.query<any>(
+          'aisdata5',
+          `
           SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
           FROM aisdata0.item i
           STRAIGHT_JOIN aisdata5.sainvl l ON l.Itemno = i.Itemno
           JOIN aisdata5.samemo m ON m.Invno = l.Trno
-          WHERE i.Vendno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate < ?
+          WHERE i.Vendno = ? AND m.Trdate >= ? AND m.Trdate < ?
           GROUP BY yy, mm
-        ) r
-        GROUP BY yy, mm
-        `,
-        splitParams,
-      ),
+          `,
+          [vendorId, historical.startDate, historical.endDate],
+        ),
+      );
+    }
+
+    if (recent) {
+      purchaseRangeQueries.push(
+        this.db.query<any>(
+          'aisdata1',
+          `
+          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Tpieces) AS purchaseQty, SUM(Totamt) AS purchaseAmt
+          FROM aisdata1.poinv
+          WHERE Compno = ? AND Trdate >= ? AND Trdate < ?
+          GROUP BY yy, mm
+          `,
+          [vendorId, recent.startDate, recent.endDate],
+        ),
+      );
+      salesRangeQueries.push(
+        this.db.query<any>(
+          'aisdata1',
+          `
+          SELECT YEAR(s.Trdate) AS yy, MONTH(s.Trdate) AS mm,
+                 SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty ELSE 0 END) AS salesQty,
+                 SUM(CASE WHEN s.Ordqty > 0 THEN s.Ordqty * s.Price ELSE 0 END) AS salesAmt
+          FROM aisdata0.item i
+          STRAIGHT_JOIN aisdata1.sainvl s ON s.Itemno = i.Itemno
+          WHERE i.Vendno = ? AND s.Trdate >= ? AND s.Trdate < ?
+          GROUP BY yy, mm
+          `,
+          [vendorId, recent.startDate, recent.endDate],
+        ),
+      );
+      returnRangeQueries.push(
+        this.db.query<any>(
+          'aisdata1',
+          `
+          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
+          FROM aisdata0.item i
+          STRAIGHT_JOIN aisdata1.sainvl l ON l.Itemno = i.Itemno
+          JOIN aisdata1.samemo m ON m.Invno = l.Trno
+          WHERE i.Vendno = ? AND m.Trdate >= ? AND m.Trdate < ?
+          GROUP BY yy, mm
+          `,
+          [vendorId, recent.startDate, recent.endDate],
+        ),
+      );
+    }
+
+    const [purchaseRows, salesRows, returnRows] = await Promise.all([
+      Promise.all(purchaseRangeQueries).then((rows) => rows.flat()),
+      Promise.all(salesRangeQueries).then((rows) => rows.flat()),
+      Promise.all(returnRangeQueries).then((rows) => rows.flat()),
     ]);
 
     return {
@@ -673,6 +802,7 @@ export class ReportService {
 
   async getDataReportSku(itemId: string) {
     const { startDate, endDate } = this.dataReportRange();
+    const { recent, historical } = this.splitSourceRange(startDate, endDate);
     const itemRows = await this.db.query<any>(
       'aisdata0',
       `
@@ -695,124 +825,34 @@ export class ReportService {
       };
     }
 
-    const splitParams = [
-      itemId,
-      startDate,
-      endDate,
-      AIS_CUTOVER_DATE,
-      itemId,
-      startDate,
-      endDate,
-      AIS_CUTOVER_DATE,
-    ];
+    const metricsQueries = [] as Promise<any[]>[];
 
-    const [purchaseRows, salesRows, returnRows, trendRows] = await Promise.all([
-      this.db.query<any>(
-        'aisdata1',
-        `
-        SELECT yy, mm, SUM(purchaseQty) AS purchaseQty, SUM(purchaseAmt) AS purchaseAmt
-        FROM (
-          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
-          FROM aisdata1.poinvl
-          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
-          GROUP BY yy, mm
-          UNION ALL
-          SELECT YEAR(Trdate) AS yy, MONTH(Trdate) AS mm, SUM(Ordqty) AS purchaseQty, SUM(Lnamt) AS purchaseAmt
-          FROM aisdata5.poinvl
-          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
-          GROUP BY yy, mm
-        ) p
-        GROUP BY yy, mm
-        `,
-        splitParams,
-      ),
-      this.db.query<any>(
-        'aisdata1',
-        `
-        SELECT yy, mm, SUM(salesQty) AS salesQty, SUM(salesAmt) AS salesAmt
-        FROM (
-          SELECT
-            YEAR(Trdate) AS yy,
-            MONTH(Trdate) AS mm,
-            SUM(CASE WHEN Ordqty > 0 THEN 1 ELSE 0 END) AS salesQty,
-            SUM(CASE WHEN Ordqty > 0 THEN Ordqty * Price ELSE 0 END) AS salesAmt
-          FROM aisdata1.sainvl
-          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate >= ?
-          GROUP BY yy, mm
-          UNION ALL
-          SELECT
-            YEAR(Trdate) AS yy,
-            MONTH(Trdate) AS mm,
-            SUM(CASE WHEN Ordqty > 0 THEN 1 ELSE 0 END) AS salesQty,
-            SUM(CASE WHEN Ordqty > 0 THEN Ordqty * Price ELSE 0 END) AS salesAmt
-          FROM aisdata5.sainvl
-          WHERE Itemno = ? AND Trdate >= ? AND Trdate < ? AND Trdate < ?
-          GROUP BY yy, mm
-        ) s
-        GROUP BY yy, mm
-        `,
-        splitParams,
-      ),
-      this.db.query<any>(
-        'aisdata1',
-        `
-        SELECT yy, mm, SUM(returnQty) AS returnQty
-        FROM (
-          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
-          FROM aisdata1.samemo m
-          JOIN aisdata1.sainvl l ON m.Invno = l.Trno
-          WHERE l.Itemno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate >= ?
-          GROUP BY yy, mm
-          UNION ALL
-          SELECT YEAR(m.Trdate) AS yy, MONTH(m.Trdate) AS mm, COUNT(*) AS returnQty
-          FROM aisdata5.samemo m
-          JOIN aisdata5.sainvl l ON m.Invno = l.Trno
-          WHERE l.Itemno = ? AND m.Trdate >= ? AND m.Trdate < ? AND m.Trdate < ?
-          GROUP BY yy, mm
-        ) r
-        GROUP BY yy, mm
-        `,
-        splitParams,
-      ),
-      this.db.query<any>(
-        'aisdata1',
-        `
-        SELECT yy, mm, SUM(ebayQty) AS ebayQty, SUM(amznQty) AS amznQty
-        FROM (
-          SELECT
-            YEAR(s.Trdate) AS yy,
-            MONTH(s.Trdate) AS mm,
-            SUM(CASE WHEN v.Trorig1 = 'EBAY' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS ebayQty,
-            SUM(CASE WHEN v.Trorig1 = 'AMZN' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS amznQty
-          FROM aisdata1.sainvl s
-          LEFT JOIN aisdata1.sainv v ON v.Trno = s.Trno
-          WHERE s.Itemno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate >= ?
-          GROUP BY yy, mm
-          UNION ALL
-          SELECT
-            YEAR(s.Trdate) AS yy,
-            MONTH(s.Trdate) AS mm,
-            SUM(CASE WHEN v.Trorig1 = 'EBAY' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS ebayQty,
-            SUM(CASE WHEN v.Trorig1 = 'AMZN' AND s.Ordqty > 0 THEN 1 ELSE 0 END) AS amznQty
-          FROM aisdata5.sainvl s
-          LEFT JOIN aisdata5.sainv v ON v.Trno = s.Trno
-          WHERE s.Itemno = ? AND s.Trdate >= ? AND s.Trdate < ? AND s.Trdate < ?
-          GROUP BY yy, mm
-        ) t
-        GROUP BY yy, mm
-        `,
-        splitParams,
-      ),
-    ]);
+    if (historical) {
+      metricsQueries.push(
+        this.querySkuSourceMetrics('aisdata5', itemId, historical.startDate, historical.endDate),
+      );
+    }
 
-    const rows = this.mergeMetricRows(purchaseRows, salesRows, returnRows, trendRows);
+    if (recent) {
+      metricsQueries.push(
+        this.querySkuSourceMetrics('aisdata1', itemId, recent.startDate, recent.endDate),
+      );
+    }
+
+    const sourceRows = await Promise.all(metricsQueries).then((rows) => rows.flat());
+    const rows = this.mergeMetricRows(
+      sourceRows.map((r) => ({ yy: r.yy, mm: r.mm, purchaseQty: r.purchaseQty, purchaseAmt: r.purchaseAmt })),
+      sourceRows.map((r) => ({ yy: r.yy, mm: r.mm, salesQty: r.salesQty, salesAmt: r.salesAmt })),
+      sourceRows.map((r) => ({ yy: r.yy, mm: r.mm, returnQty: r.returnQty })),
+      sourceRows.map((r) => ({ yy: r.yy, mm: r.mm, ebayQty: r.ebayQty, amznQty: r.amznQty })),
+    );
 
     return {
       ok: true,
       item,
       rows,
       trend: rows
-        .filter((r) => r.year === 2026)
+        .filter((r) => r.year === new Date().getFullYear())
         .map((r) => ({
           label: `${String(r.month).padStart(2, '0')}/${String(r.year).slice(-2)}`,
           ebay: r.ebayQty || 0,
