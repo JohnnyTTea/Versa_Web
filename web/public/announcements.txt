@@ -2,6 +2,6 @@
 # One line = one announcement item
 # Lines starting with # are comments and will be ignored
 
-Updates(2026-09-03):
-Monitor: Added live Inventory Alerts, Sales Anomalies, and Order Exceptions on the home page.
-Home:Homepage Layout Optimization
+Updates(2026-09-17):
+Report: Vendor and SKU queries are now optimized for faster loading and better performance.
+System: Latest backend and frontend fixes have been deployed to the main branch.
