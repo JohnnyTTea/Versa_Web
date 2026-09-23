@@ -330,6 +330,123 @@ th a:hover {
   color: #555;
 }
 
+/* Product label preview and 6 x 4 inch landscape print layout */
+.product-label-section {
+  margin-top: 34px;
+  padding-top: 22px;
+  border-top: 1px solid #dbe3ec;
+}
+
+.product-label-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.product-label-toolbar h3 { margin: 0; font-size: 20px; color: #0f172a; }
+.product-label-toolbar p { margin: 4px 0 0; color: #64748b; font-size: 13px; }
+
+.print-label-btn {
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 9px;
+  background: #0f172a;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.print-label-btn:hover { background: #1e293b; }
+.print-label-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.product-label-preview {
+  display: inline-block;
+  padding: 18px;
+  background: #e8edf3;
+  border: 1px solid #dbe3ec;
+  border-radius: 10px;
+}
+
+.product-label {
+  width: 6in;
+  height: 4in;
+  box-sizing: border-box;
+  padding: 0.2in 0.28in;
+  overflow: hidden;
+  background: #ffffff;
+  color: #111827;
+  text-align: center;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.product-label-sku { min-height: 0.38in; font-size: 27px; line-height: 1.05; font-weight: 800; overflow-wrap: anywhere; }
+
+.product-label-barcode {
+  display: block;
+  width: 100%;
+  height: 0.56in;
+  margin: 0.05in 0 0.08in;
+}
+
+.product-label-description {
+  min-height: 0.38in;
+  padding: 0.06in 0;
+  border-top: 1px dashed #6b7280;
+  border-bottom: 1px dashed #6b7280;
+  font-size: 15px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.product-label-branding {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.24in;
+  height: 1.38in;
+  margin-top: 0.12in;
+}
+
+.product-label-qr {
+  width: 1.15in;
+  height: 1.15in;
+  object-fit: contain;
+}
+
+.product-label-branding-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.08in;
+  width: 2.2in;
+}
+
+.product-label-handling {
+  width: 1.6in;
+  height: 0.72in;
+  object-fit: contain;
+}
+
+.product-label-logo-image {
+  width: 2.2in;
+  height: auto;
+  max-height: 0.42in;
+  object-fit: contain;
+}
+.product-label-empty { color: #64748b; }
+
+@media print {
+  @page { size: 6in 4in; margin: 0; }
+  body * { visibility: hidden !important; }
+  .product-label-preview, .product-label-preview * { visibility: visible !important; }
+  .product-label-preview { position: absolute; inset: 0; padding: 0; border: 0; background: #ffffff; }
+  .product-label { width: 6in; height: 4in; border: 0; }
+}
+
 /* message-box */
 .message-box {
   background-color: #fff1f2;
