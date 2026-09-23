@@ -115,6 +115,7 @@ async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
 export default function ProductPicture() {
   const [sp] = useSearchParams();
   const itemId = (sp.get("id") || "").trim();
+  const labelSku = itemId.toUpperCase();
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -234,11 +235,11 @@ export default function ProductPicture() {
           </button>
         </div>
 
-        {itemId ? (
+        {labelSku ? (
           <div className="product-label-preview">
             <div className="product-label">
-              <div className="product-label-sku">{itemId}</div>
-              <Barcode value={itemId} />
+              <div className="product-label-sku">{labelSku}</div>
+              <Barcode value={labelSku} />
               <div className="product-label-description">{description || "No description available"}</div>
               <div className="product-label-branding">
                 <img className="product-label-qr" src={labelQr} alt="Product QR code" />
