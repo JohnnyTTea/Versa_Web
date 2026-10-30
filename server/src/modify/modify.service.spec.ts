@@ -24,7 +24,7 @@ describe('ModifyService sales order tax updates', () => {
   };
 
   it('previews aggregated tax, idempotent total, and unmatched order ids', async () => {
-    const query = jest.fn().mockResolvedValue([order]);
+    const query = jest.fn().mockResolvedValue([{ ...order, Taxamt1: 0 }]);
     const withTransaction = jest.fn();
     const service = new ModifyService({
       query,
@@ -48,10 +48,10 @@ describe('ModifyService sales order tax updates', () => {
         order_id: 'amazon-order-1',
         source_rows: 2,
         tax_amount: 3.75,
-        old_tax: 4,
+        old_tax: 0,
         new_tax: 3.75,
         old_total: 100,
-        new_total: 99.75,
+        new_total: 103.75,
       }),
     ]);
     expect(result.unmatched).toEqual([
@@ -63,7 +63,7 @@ describe('ModifyService sales order tax updates', () => {
   });
 
   it('supports TSV/TXT uploads with the same fixed headers', async () => {
-    const query = jest.fn().mockResolvedValue([order]);
+    const query = jest.fn().mockResolvedValue([{ ...order, Taxamt1: 0 }]);
     const withTransaction = jest.fn();
     const service = new ModifyService({
       query,
@@ -86,8 +86,28 @@ describe('ModifyService sales order tax updates', () => {
     ]);
   });
 
+  it('skips any order whose Taxamt1 already exists in the database', async () => {
+    const query = jest.fn().mockResolvedValue([{ ...order, Taxamt1: 12.5 }]);
+    const withTransaction = jest.fn();
+    const service = new ModifyService({
+      query,
+      withTransaction,
+    } as unknown as MysqlService);
+    const file = await makeWorkbook([['amazon-order-1', 3.75]]);
+
+    const result = await service.previewSalesOrderTax(file, 'IKON');
+
+    expect(result.matched).toEqual([]);
+    expect(result.unmatched).toEqual([
+      expect.objectContaining({
+        order_id: 'amazon-order-1',
+        reason: '数据库中已存在 Taxamt1，跳过修改',
+      }),
+    ]);
+  });
+
   it('updates matched orders in a transaction after confirming the preview state', async () => {
-    const transactionQuery = jest.fn().mockResolvedValue([order]);
+    const transactionQuery = jest.fn().mockResolvedValue([{ ...order, Taxamt1: 0 }]);
     const transactionExecute = jest.fn().mockResolvedValue({ affectedRows: 1 });
     const transaction: MysqlTransaction = {
       query: transactionQuery,
@@ -98,7 +118,7 @@ describe('ModifyService sales order tax updates', () => {
         callback(transaction),
     );
     const db = {
-      query: jest.fn().mockResolvedValue([order]),
+      query: jest.fn().mockResolvedValue([{ ...order, Taxamt1: 0 }]),
       withTransaction,
     };
     const service = new ModifyService(db as unknown as MysqlService);
@@ -121,7 +141,7 @@ describe('ModifyService sales order tax updates', () => {
     );
     expect(transactionExecute).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE saord SET Taxamt1 = ?, Totamt = ?'),
-      [3.75, 99.75, 12345, 'amazon-order-1'],
+      [3.75, 103.75, 12345, 'amazon-order-1'],
     );
     expect(result.updated_orders).toBe(1);
     expect(result.updated).toBe(true);
@@ -141,7 +161,7 @@ describe('ModifyService sales order tax updates', () => {
         callback(transaction),
     );
     const db = {
-      query: jest.fn().mockResolvedValue([order]),
+      query: jest.fn().mockResolvedValue([{ ...order, Taxamt1: 0 }]),
       withTransaction,
     };
     const service = new ModifyService(db as unknown as MysqlService);
@@ -150,7 +170,7 @@ describe('ModifyService sales order tax updates', () => {
 
     await expect(
       service.executeSalesOrderTax(file, 'IKON', preview.matched),
-    ).rejects.toThrow('自预览后发生变化');
+    ).rejects.toThrow('订单匹配结果已变化');
     expect(transactionExecute).not.toHaveBeenCalled();
   });
 });

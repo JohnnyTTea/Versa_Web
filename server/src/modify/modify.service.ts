@@ -383,6 +383,17 @@ export class ModifyService {
       const order = orders[0];
       const oldTax = this.round2(this.toNumber(order.Taxamt1));
       const oldTotal = this.round2(this.toNumber(order.Totamt));
+
+      if (Math.abs(oldTax) > 0.000001) {
+        unmatched.push({
+          order_id: input.order_id,
+          source_rows: input.source_rows,
+          tax_amount: taxAmount,
+          reason: '数据库中已存在 Taxamt1，跳过修改',
+        });
+        continue;
+      }
+
       matched.push({
         order_id: input.order_id,
         source_rows: input.source_rows,
