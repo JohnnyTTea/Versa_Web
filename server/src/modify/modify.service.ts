@@ -116,6 +116,14 @@ export class ModifyService {
       .replace(/-+/g, '-');
   }
 
+  private findHeaderIndex(headers: Map<string, number>, candidates: string[]): number | undefined {
+    for (const candidate of candidates) {
+      const index = headers.get(this.normalizeHeaderKey(candidate));
+      if (index !== undefined) return index;
+    }
+    return undefined;
+  }
+
   private toMoneyCents(value: unknown, rowNumber: number): number {
     const text = this.cellText(value).trim().replace(/[$,]/g, '');
     if (!/^-?\d+(?:\.\d+)?$/.test(text)) {
@@ -204,10 +212,10 @@ export class ModifyService {
       indexByHeader.set(this.normalizeHeaderKey(header), index);
     });
 
-    const orderIdColumn = indexByHeader.get('order-id');
-    const itemTaxColumn = indexByHeader.get('item-tax');
+    const orderIdColumn = this.findHeaderIndex(indexByHeader, ['order-id', 'orderid', 'customer-id', 'cpono']);
+    const itemTaxColumn = this.findHeaderIndex(indexByHeader, ['item-tax', 'item-tax-amount', 'tax', 'taxamt1', 'tax-amount']);
     if (orderIdColumn === undefined || itemTaxColumn === undefined) {
-      throw new BadRequestException('文件必须包含 order-id 和 item-tax 列');
+      throw new BadRequestException('文件必须包含 order-id / customer-id / cpono 和 item-tax / tax 列');
     }
 
     const byOrderId = new Map<string, ParsedSalesOrderTaxRow>();
@@ -220,7 +228,10 @@ export class ModifyService {
       if (!orderValue.trim() && !taxValue.trim()) continue;
       const orderId = orderValue.trim();
       if (!orderId) {
-        throw new BadRequestException(`第 ${rowNumber} 行缺少 order-id`);
+        throw new BadRequestException(`第 ${rowNumber} 行缺少订单号（order-id / customer-id / cpono）`);
+      }
+      if (!String(taxValue ?? '').trim()) {
+        continue;
       }
       const taxCents = this.toMoneyCents(taxValue, rowNumber);
       const current = byOrderId.get(orderId);
@@ -254,10 +265,10 @@ export class ModifyService {
       worksheet.getRow(1).eachCell((cell, column) => {
         headers.set(this.normalizeHeaderKey(cell.text), column);
       });
-      const orderIdColumn = headers.get('order-id');
-      const itemTaxColumn = headers.get('item-tax');
+      const orderIdColumn = this.findHeaderIndex(headers, ['order-id', 'orderid', 'customer-id', 'cpono']);
+      const itemTaxColumn = this.findHeaderIndex(headers, ['item-tax', 'item-tax-amount', 'tax', 'taxamt1', 'tax-amount']);
       if (orderIdColumn === undefined || itemTaxColumn === undefined) {
-        throw new BadRequestException('Excel 必须包含 order-id 和 item-tax 列');
+        throw new BadRequestException('Excel 必须包含 order-id / customer-id / cpono 和 item-tax / tax 列');
       }
 
       const byOrderId = new Map<string, ParsedSalesOrderTaxRow>();
@@ -276,7 +287,11 @@ export class ModifyService {
 
         const orderId = this.cellText(orderValue).trim();
         if (!orderId) {
-          throw new BadRequestException(`第 ${rowNumber} 行缺少 order-id`);
+          throw new BadRequestException(`第 ${rowNumber} 行缺少订单号（order-id / customer-id / cpono）`);
+        }
+        const normalizedTax = String(taxValue ?? '').trim();
+        if (!normalizedTax) {
+          continue;
         }
         const taxCents = this.toMoneyCents(taxValue, rowNumber);
         const current = byOrderId.get(orderId);

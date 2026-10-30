@@ -86,6 +86,22 @@ describe('ModifyService sales order tax updates', () => {
     ]);
   });
 
+  it('accepts common alternate header names used by exported files', async () => {
+    const query = jest.fn().mockResolvedValue([{ ...order, Taxamt1: 0 }]);
+    const withTransaction = jest.fn();
+    const service = new ModifyService({ query, withTransaction } as unknown as MysqlService);
+    const file = Buffer.from(['customer-id,tax', 'amazon-order-1,3.75'].join('\n'), 'utf8');
+
+    const result = await service.previewSalesOrderTax(file, 'IKON');
+
+    expect(result.matched).toEqual([
+      expect.objectContaining({
+        order_id: 'amazon-order-1',
+        tax_amount: 3.75,
+      }),
+    ]);
+  });
+
   it('skips any order whose Taxamt1 already exists in the database', async () => {
     const query = jest.fn().mockResolvedValue([{ ...order, Taxamt1: 12.5 }]);
     const withTransaction = jest.fn();
