@@ -13,10 +13,12 @@ import ProductSales from "./pages/product/Sales";
 import ProductSales12mo from "./pages/product/Sales12mo";
 import ProductCost from "./pages/product/Cost";
 import ProductPicture from "./pages/product/Picture";
+import ProductDirectory from "./pages/product/ProductDirectory";
 // DTO page
 import DtoPage from "./pages/dto/DtoPage";
 // Modify Page
 import ModifyPage from "./pages/modify/ModifyPage";
+import Warehouse from "./pages/Warehouse";
 // Sales Page
 import Sales from "./pages/salesorder/Sales";
 import Invoice from "./pages/salesorder/Invoices";
@@ -55,6 +57,7 @@ export default function App() {
         <Routes>
           {/* 未登录页面 */}
           <Route path="/login" element={<Login />} />
+          <Route path="/warehouse" element={<Warehouse />} />
 
           {/* 受保护区域 */}
           <Route element={<ProtectedLayout />}>
@@ -66,6 +69,7 @@ export default function App() {
               <Route path="sales12mo" element={<ProductSales12mo />} />
               <Route path="cost" element={<ProductCost />} />
               <Route path="picture" element={<ProductPicture />} />
+              <Route path="directory" element={<ProductDirectory />} />
             </Route>
             {/* Modify */}
             <Route path="/modify" element={<ModifyPage />} />

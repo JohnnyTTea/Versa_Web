@@ -53,13 +53,44 @@ Step "Build server"
 Run "npm run build" $serverDir
 
 Step "Stop old server process on port $ServerPort"
-$connections = Get-NetTCPConnection -LocalPort $ServerPort -State Listen -ErrorAction SilentlyContinue
-$processIds = @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
-foreach ($processId in $processIds) {
-  if ($processId -and $processId -ne $PID) {
-    Write-Host "Stopping PID $processId"
-    Stop-Process -Id $processId -Force
+function Get-ServerProcessIds {
+  $ids = New-Object System.Collections.Generic.HashSet[int]
+
+  $connections = @(Get-NetTCPConnection -LocalPort $ServerPort -ErrorAction SilentlyContinue)
+  foreach ($connection in $connections) {
+    if ($connection.OwningProcess -and $connection.OwningProcess -ne $PID) {
+      [void]$ids.Add([int]$connection.OwningProcess)
+    }
   }
+
+  $nodeProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue)
+  foreach ($nodeProcess in $nodeProcesses) {
+    if ($nodeProcess.ProcessId -ne $PID -and $nodeProcess.CommandLine -and
+        ($nodeProcess.CommandLine -like "*$serverDir*" -or $nodeProcess.CommandLine -like "*dist/main*")) {
+      [void]$ids.Add([int]$nodeProcess.ProcessId)
+    }
+  }
+
+  return @($ids)
+}
+
+$oldProcessIds = @(Get-ServerProcessIds)
+foreach ($processId in $oldProcessIds) {
+  Write-Host "Stopping server PID $processId"
+  Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+}
+
+for ($i = 1; $i -le 15; $i++) {
+  $remaining = @(Get-ServerProcessIds)
+  if ($remaining.Count -eq 0) {
+    break
+  }
+  Start-Sleep -Seconds 1
+}
+
+$remaining = @(Get-ServerProcessIds)
+if ($remaining.Count -gt 0) {
+  throw "Could not stop old server process(es): $($remaining -join ', ')"
 }
 
 Step "Start server"
@@ -82,8 +113,9 @@ Write-Host "Started server PID $($proc.Id) via node dist/main"
 $serverRunning = $null
 for ($i = 1; $i -le 30; $i++) {
   Start-Sleep -Seconds 1
-  $serverRunning = Get-NetTCPConnection -LocalPort $ServerPort -State Listen -ErrorAction SilentlyContinue
-  if ($serverRunning) {
+  $serverRunning = @(Get-NetTCPConnection -LocalPort $ServerPort -State Listen -ErrorAction SilentlyContinue |
+    Where-Object { $_.OwningProcess -eq $proc.Id })
+  if ($serverRunning.Count -gt 0) {
     break
   }
 
@@ -92,7 +124,7 @@ for ($i = 1; $i -le 30; $i++) {
   }
 }
 
-if (-not $serverRunning) {
+if ($serverRunning.Count -eq 0) {
   Write-Host "Server did not start on port $ServerPort." -ForegroundColor Red
   if ($proc.HasExited) {
     Write-Host "Start process exited with code $($proc.ExitCode)." -ForegroundColor Red

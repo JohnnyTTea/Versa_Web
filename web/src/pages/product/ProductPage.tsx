@@ -66,6 +66,7 @@ export default function ProductPage() {
 
   // ✅ 只有 /product 才算“主页面”
   const isProductRoot = !!useMatch({ path: "/product", end: true });
+  const isDirectoryPage = !!useMatch({ path: "/product/directory", end: true });
 
   const itemId = (sp.get("id") || "").trim();
   const [input, setInput] = useState(itemId);
@@ -116,7 +117,7 @@ export default function ProductPage() {
     let orderTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function run() {
-      if (!id) {
+      if (!id || isDirectoryPage) {
         setMessage("");
         setProduct(null);
         setOnhand(null);
@@ -313,7 +314,7 @@ export default function ProductPage() {
       cancelled = true;
       if (orderTimer) clearTimeout(orderTimer);
     };
-  }, [itemId, isProductRoot]);
+  }, [itemId, isProductRoot, isDirectoryPage]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -331,21 +332,22 @@ export default function ProductPage() {
     <div className="main-content progressive-enter">
       {message ? <div className="message-box">{message}</div> : null}
 
-      {/* 搜索框 */}
-      <form className="search-form sticky-search" onSubmit={submit}>
-        <label className="search-label">Item ID:</label>
-        <input
-          type="text"
-          name="id"
-          placeholder="ID"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-        <button type="submit">Search</button>
-      </form>
+      {!isDirectoryPage ? (
+        <form className="search-form sticky-search" onSubmit={submit}>
+          <label className="search-label">Item ID:</label>
+          <input
+            type="text"
+            name="id"
+            placeholder="ID"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+          />
+          <button type="submit">Search</button>
+        </form>
+      ) : null}
 
       {/* 顶部大信息卡 */}
-      <div className="product-info">
+      {!isDirectoryPage ? <div className="product-info">
         <div className="product-header">
           <h2>
             Item ID: <span>{(product && product.Itemno) || itemId || ""}</span>
@@ -518,7 +520,7 @@ export default function ProductPage() {
           </div>
           <div className="footer-block">Cost Issue (AMZN):</div>
         </div>
-      </div>
+      </div> : null}
 
       {/* ✅ 下面内容：/product 显示 OnOrder/Transit；其他子页面显示 Outlet */}
       {isProductRoot ? (
@@ -649,6 +651,7 @@ export default function ProductPage() {
               )}
             </tbody>
           </table>
+
         </div>
       ) : (
         <Outlet />

@@ -283,6 +283,48 @@ export class ProductsService {
     return this.getSummaryBasicCore(itemId);
   }
 
+  async getProductDirectory(params: { page: number; limit: number; search?: string }) {
+    const limit = Math.min(Math.max(1, params.limit || 50), 100);
+    const page = Math.max(1, params.page || 1);
+    const offset = (page - 1) * limit;
+    const search = String(params.search || '').trim();
+    const whereSql = search
+      ? 'WHERE i.Itemno REGEXP ? OR i.Desc1 REGEXP ?'
+      : '';
+    const whereParams = search ? [search, search] : [];
+    const rows = await this.db.query(
+      'aisdata0',
+      `
+      SELECT
+        i.Itemno AS Itemno,
+        i.Type AS Type,
+        i.Desc1 AS Desc1,
+        i.Desc2 AS Desc2,
+        i.Bin AS Bin,
+        i.Onhand AS Onhand,
+        i.Sboxlen AS Sboxlen,
+        i.Sboxwid AS Sboxwid,
+        i.Sboxhei AS Sboxhei,
+        i.Sboxwei AS Sboxwei,
+        i.Redate AS CreatedDate
+      FROM item i
+      ${whereSql}
+      ORDER BY i.Itemno
+      LIMIT ? OFFSET ?
+      `,
+      [...whereParams, limit + 1, offset],
+    );
+    const hasMore = rows.length > limit;
+
+    return {
+      ok: true,
+      page,
+      limit,
+      hasMore,
+      rows: Array.isArray(rows) ? rows.slice(0, limit) : [],
+    };
+  }
+
   // 新：慢指标（RMA/CA/GA）
   async getSummaryMetrics(itemId: string) {
     const core = await this.getSummaryBasicCore(itemId);

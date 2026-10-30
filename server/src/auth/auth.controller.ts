@@ -9,12 +9,16 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  async login(@Body() body: { username?: string; password?: string }, @Req() req: Request) {
+  async login(
+    @Body() body: { username?: string; password?: string; mode?: 'versa' | 'warehouse' },
+    @Req() req: Request,
+  ) {
     const username = (body?.username || '').trim();
     const password = (body?.password || '').trim();
+    const mode = body?.mode === 'warehouse' ? 'warehouse' : 'versa';
     if (!username || !password) return { ok: false, message: 'Missing username or password' };
 
-    const result = await this.auth.validateLogin('data0', username, password);
+    const result = await this.auth.validateLogin('data0', username, password, mode);
     if (!result.ok) return result;
 
     const sess: any = (req as any).session;
@@ -23,8 +27,9 @@ export class AuthController {
     sess.role_id = result.user.role_id;
     sess.role_name = result.user.role_name;
     sess.perms = result.user.perms;
+    sess.login_mode = mode;
 
-    return { ok: true, user: result.user };
+    return { ok: true, user: result.user, mode };
   }
 
   @Public()
@@ -43,6 +48,7 @@ export class AuthController {
         role_name: sess.role_name,
         perms: sess.perms,
       },
+      mode: sess.login_mode || 'versa',
     });
   }
 

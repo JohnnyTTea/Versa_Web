@@ -12,6 +12,7 @@ import { ModifyModule } from './modify/modify.module';
 import { ReportModule } from './report/report.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { MonitorModule } from './monitor/monitor.module';
+import { WarehouseModule } from './warehouse/warehouse.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { MonitorModule } from './monitor/monitor.module';
     RolesModule,
     LogModule,
     SettingsModule,
+    WarehouseModule,
   ],
 })
 export class AppModule {}

@@ -22,6 +22,20 @@ export class ProductsController {
     return await this.products.getSummaryBasic(itemId);
   }
 
+  // /api/products/directory?page=1&limit=50&search=SKU
+  @Get('directory')
+  async directory(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    return await this.products.getProductDirectory({
+      page: Math.max(1, parseInt(page || '1', 10) || 1),
+      limit: Math.min(100, Math.max(1, parseInt(limit || '50', 10) || 50)),
+      search,
+    });
+  }
+
   // /api/products/summary-metrics?id=SKU
   @Get('summary-metrics')
   async summaryMetrics(@Query('id') id?: string) {

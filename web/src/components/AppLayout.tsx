@@ -1,11 +1,12 @@
-import React, { useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 
 import Sidebar from "../sidebar/Sidebar";
 import { useSidebar } from "../sidebar/SidebarContext";
 import type { ModuleKey } from "../sidebar/menus";
+import ProductDirectory from "../pages/product/ProductDirectory";
 import "../styles/layout.css";
 
 async function logUserActivity(path: string) {
@@ -38,13 +39,35 @@ function detectModule(pathname: string): ModuleKey | null {
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { setActiveModule } = useSidebar();
   const prevModuleRef = useRef<ModuleKey | null>(null);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
 
   // ✅ 每次切路由都记录一次（更合理）
   useEffect(() => {
     logUserActivity(pathname);
   }, [pathname]);
+
+  useEffect(() => {
+    function handleGlobalKeyDown(event: KeyboardEvent) {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+      if (event.key === "F1") {
+        event.preventDefault();
+        setDirectoryOpen(false);
+        navigate("/product");
+      } else if (event.key === "F2") {
+        event.preventDefault();
+        setDirectoryOpen(true);
+      } else if (event.key === "Escape") {
+        setDirectoryOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [navigate]);
 
   // ✅ 每次切路由更新 sidebar 菜单所属模块
   useEffect(() => {
@@ -70,6 +93,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <Footer />
+      {directoryOpen ? <ProductDirectory modal onClose={() => setDirectoryOpen(false)} /> : null}
     </div>
   );
 }

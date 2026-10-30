@@ -24,7 +24,12 @@ function buildPerms(roleRow: any): Perms {
 export class AuthService {
   constructor(private readonly db: MysqlService) {}
 
-  async validateLogin(schema: 'data0', username: string, password: string) {
+  async validateLogin(
+    schema: 'data0',
+    username: string,
+    password: string,
+    mode: 'versa' | 'warehouse' = 'versa',
+  ) {
     const userRows = await this.db.query(
       schema,
       `
@@ -59,6 +64,11 @@ export class AuthService {
     );
 
     const roleRow = Array.isArray(roleRows) ? roleRows[0] : null;
+    const roleName = String(roleRow?.role_name || '').trim().toLowerCase();
+
+    if (mode === 'versa' && roleName === 'packer') {
+      return { ok: false as const, message: 'Packer users cannot access Versa main page' };
+    }
 
     return {
       ok: true as const,

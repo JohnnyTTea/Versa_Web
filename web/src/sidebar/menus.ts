@@ -27,11 +27,12 @@ export const homeMenu: SidebarItem = {
 export const moduleMenus: Record<ModuleKey, SidebarItem[]> = {
   //product
   product: [
-    { label: "Product", to: "/product", end: true },
+    { label: "Product (F1)", to: "/product", end: true },
     { label: "Sales", to: "/product/Sales" },
     { label: "12 Mo.", to: "/product/Sales12mo" },
     { label: "Cost", to: "/product/Cost" },
     { label: "Picture", to: "/product/Picture" },
+    { label: "Directory (F2)", to: "/product/directory" },
   ],
 //sales
   sales: [

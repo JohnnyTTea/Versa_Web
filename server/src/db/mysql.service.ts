@@ -1,9 +1,20 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import * as mysql from 'mysql2/promise';
 
-type SchemaName = 'aisdata0' | 'aisdata1' | 'aisdata3' | 'aisdata5' | 'aisdatax' | 'data0';
+type SchemaName =
+  | 'aisdata0'
+  | 'aisdata1'
+  | 'aisdata3'
+  | 'aisdata5'
+  | 'aisdatax'
+  | 'data0';
 
-type PoolKey = 'AIS' |'TSHIPPER'| 'DATA';
+type PoolKey = 'AIS' | 'TSHIPPER' | 'DATA';
+
+export type MysqlTransaction = {
+  query<T = any>(sql: string, params?: any): Promise<T[]>;
+  execute(sql: string, params?: any): Promise<{ affectedRows: number }>;
+};
 
 @Injectable()
 export class MysqlService implements OnModuleDestroy {
@@ -86,8 +97,45 @@ export class MysqlService implements OnModuleDestroy {
     params?: any,
   ): Promise<{ affectedRows: number }> {
     const pool = this.getPool(schema);
-    const [res]: any = await pool.execute(sql, params);
-    return { affectedRows: Number(res?.affectedRows || 0) };
+    const [result] = await pool.execute(sql, params);
+    const header = result as mysql.ResultSetHeader;
+    return { affectedRows: Number(header.affectedRows || 0) };
+  }
+
+  async withTransaction<T>(
+    schema: SchemaName,
+    work: (transaction: MysqlTransaction) => Promise<T>,
+  ): Promise<T> {
+    const connection = await this.getPool(schema).getConnection();
+    try {
+      await connection.beginTransaction();
+      const transaction: MysqlTransaction = {
+        query: async <R = any>(sql: string, params?: any) => {
+          const [rows] = await connection.query(sql, params);
+          return rows as R[];
+        },
+        execute: async (sql: string, params?: any) => {
+          const [queryResult] = await connection.execute(sql, params);
+          const header = queryResult as mysql.ResultSetHeader;
+          return { affectedRows: Number(header.affectedRows || 0) };
+        },
+      };
+      const result = await work(transaction);
+      await connection.commit();
+      return result;
+    } catch (error) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          'Database transaction failed and rollback also failed',
+        );
+      }
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async onModuleDestroy() {

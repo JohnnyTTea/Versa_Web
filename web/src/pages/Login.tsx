@@ -11,6 +11,7 @@ export default function Login() {
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loginMode, setLoginMode] = useState<"versa" | "warehouse">("versa");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,11 +31,12 @@ export default function Login() {
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include", // ⭐ very important：让 session cookie 生效
+        credentials: "include",
         body: JSON.stringify({
           username: normalizedUsername,
           password,
           remember,
+          mode: loginMode,
         }),
       });
 
@@ -46,7 +48,11 @@ export default function Login() {
         return;
       }
 
-      // 登录成功 → 跳转首页（对应 PHP 的 header("Location: ../public/index.php")）
+      if (loginMode === "warehouse") {
+        navigate("/warehouse", { replace: true });
+        return;
+      }
+
       navigate("/", { replace: true });
     } catch (err) {
       setError("服务器连接失败");
@@ -61,14 +67,28 @@ export default function Login() {
         <div className="login-side">
           <div className="login-brand">
             <img src={logo} alt="Versa logo" className="login-brand-mark" />
-            <span>Versa</span>
+            <span>{loginMode === "warehouse" ? "Warehouse" : "Versa"}</span>
           </div>
           <h2>New Aim LLC.</h2>
-          <h1>Team Members Login</h1>
-          <p>Welcome back. Please sign in to continue.</p>
+          <h1>{loginMode === "warehouse" ? "Warehouse Login" : "Team Members Login"}</h1>
+          <p>
+            {loginMode === "warehouse"
+              ? "Scan and log packing activity from mobile devices."
+              : "Welcome back. Please sign in to continue."}
+          </p>
         </div>
 
         <div className="login-container">
+          <button
+            type="button"
+            className={`login-mode-toggle ${loginMode === "warehouse" ? "is-warehouse" : ""}`}
+            aria-label={loginMode === "warehouse" ? "Switch to Versa" : "Switch to Warehouse"}
+            onClick={() => setLoginMode((prev) => (prev === "versa" ? "warehouse" : "versa"))}
+            title={loginMode === "warehouse" ? "Switch to Versa" : "Switch to Warehouse"}
+          >
+            <span className="login-mode-toggle-letter">W</span>
+          </button>
+
           <h2>Sign In</h2>
 
           {error && <div className="error">{error}</div>}
@@ -105,8 +125,8 @@ export default function Login() {
               <a href="#" className="forgot-link">Forgot password?</a>
             </div>
 
-            <button type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Login"}
+            <button type="submit" className="login-submit" disabled={loading}>
+              {loading ? "Signing in..." : loginMode === "warehouse" ? "Open Warehouse" : "Login"}
             </button>
           </form>
 
