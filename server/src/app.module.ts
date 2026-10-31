@@ -13,11 +13,13 @@ import { ReportModule } from './report/report.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { MonitorModule } from './monitor/monitor.module';
 import { WarehouseModule } from './warehouse/warehouse.module';
+import { DbModule } from './db/db.module';
 import { DefaultPackerUsersSeed } from './seed/default-packer-users.seed';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    DbModule,
     AuthModule,
     ProductsModule,
     SalesModule,
