@@ -14,6 +14,7 @@ const MENUS = [
   'inventory',
   'review',
   'settings',
+  'warehouse',
 ] as const;
 
 type MenuKey = (typeof MENUS)[number];
@@ -21,6 +22,21 @@ type MenuKey = (typeof MENUS)[number];
 @Injectable()
 export class SettingsService {
   constructor(private readonly db: MysqlService) {}
+
+  private async ensureRoleColumns() {
+    const rows = await this.db.query<any>(
+      SETTINGS_SCHEMA,
+      `SHOW COLUMNS FROM roles LIKE 'can_warehouse'`,
+      [],
+    );
+    if (!rows || rows.length === 0) {
+      await this.db.query(
+        SETTINGS_SCHEMA,
+        `ALTER TABLE roles ADD COLUMN can_warehouse TINYINT(1) NOT NULL DEFAULT 0`,
+        [],
+      );
+    }
+  }
 
   private normalizePerm(perm: Record<string, any>) {
     const out: Record<MenuKey, number> = {
@@ -33,6 +49,7 @@ export class SettingsService {
       inventory: 0,
       review: 0,
       settings: 0,
+      warehouse: 0,
     };
     for (const k of MENUS) {
       const v = perm?.[k];
@@ -220,13 +237,14 @@ export class SettingsService {
   }
 
   async getRoles() {
+    await this.ensureRoleColumns();
     const roles = await this.db.query<any>(
       SETTINGS_SCHEMA,
       `
       SELECT
         id, role_name, description,
         can_product, can_sales, can_purchase, can_dto,
-        can_modify, can_report, can_inventory, can_review, can_settings
+        can_modify, can_report, can_inventory, can_review, can_settings, can_warehouse
       FROM roles
       ORDER BY id ASC
       `,
@@ -243,6 +261,8 @@ export class SettingsService {
   }) {
     const { id, role_name, description, perm } = args;
     if (!role_name) return { ok: false, message: 'empty_name' };
+
+    await this.ensureRoleColumns();
 
     if (id > 0) {
       const r = await this.db.query<any>(
@@ -266,7 +286,7 @@ export class SettingsService {
         UPDATE roles SET
           role_name = ?, description = ?,
           can_product = ?, can_sales = ?, can_purchase = ?, can_dto = ?,
-          can_modify = ?, can_report = ?, can_inventory = ?, can_review = ?, can_settings = ?
+          can_modify = ?, can_report = ?, can_inventory = ?, can_review = ?, can_settings = ?, can_warehouse = ?
         WHERE id = ?
         `,
         [
@@ -281,6 +301,7 @@ export class SettingsService {
           p.inventory,
           p.review,
           p.settings,
+          p.warehouse,
           id,
         ],
       );
@@ -293,11 +314,11 @@ export class SettingsService {
       INSERT INTO roles (
         role_name, description, created_time,
         can_product, can_sales, can_purchase, can_dto,
-        can_modify, can_report, can_inventory, can_review, can_settings
+        can_modify, can_report, can_inventory, can_review, can_settings, can_warehouse
       ) VALUES (
         ?, ?, NOW(),
         ?, ?, ?, ?,
-        ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?
       )
       `,
       [
@@ -312,6 +333,7 @@ export class SettingsService {
         p.inventory,
         p.review,
         p.settings,
+        p.warehouse,
       ],
     );
     return { ok: true };

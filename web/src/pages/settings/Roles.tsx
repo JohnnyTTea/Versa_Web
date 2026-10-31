@@ -23,6 +23,7 @@ type RoleRow = {
   can_inventory: number;
   can_review: number;
   can_settings: number;
+  can_warehouse: number;
 };
 
 const menus = [
@@ -35,6 +36,7 @@ const menus = [
   { key: "inventory", label: "Inventory Manage" },
   { key: "review", label: "Pending Review" },
   { key: "settings", label: "System Settings" },
+  { key: "warehouse", label: "Warehouse" },
 ] as const;
 
 async function apiGet<T>(url: string): Promise<T> {

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { MysqlService } from '../db/mysql.service';
 
 type Perms = Record<
-  'product' | 'sales' | 'purchase' | 'dto' | 'modify' | 'report' | 'inventory' | 'review' | 'settings',
+  'product' | 'sales' | 'purchase' | 'dto' | 'modify' | 'report' | 'inventory' | 'review' | 'settings' | 'warehouse',
   boolean
 >;
 
@@ -17,6 +17,7 @@ function buildPerms(roleRow: any): Perms {
     inventory: !!roleRow?.can_inventory,
     review: !!roleRow?.can_review,
     settings: !!roleRow?.can_settings,
+    warehouse: !!roleRow?.can_warehouse,
   };
 }
 
@@ -55,7 +56,7 @@ export class AuthService {
       `
       SELECT r.id, r.role_name,
              r.can_product, r.can_sales, r.can_purchase, r.can_dto, r.can_modify,
-             r.can_report, r.can_inventory, r.can_review, r.can_settings
+             r.can_report, r.can_inventory, r.can_review, r.can_settings, r.can_warehouse
       FROM roles r
       WHERE r.id = ?
       LIMIT 1
@@ -65,9 +66,14 @@ export class AuthService {
 
     const roleRow = Array.isArray(roleRows) ? roleRows[0] : null;
     const roleName = String(roleRow?.role_name || '').trim().toLowerCase();
+    const warehouseAllowed = !!roleRow?.can_warehouse;
 
     if (mode === 'versa' && roleName === 'packer') {
       return { ok: false as const, message: 'Packer users cannot access Versa main page' };
+    }
+
+    if (mode === 'warehouse' && !warehouseAllowed) {
+      return { ok: false as const, message: 'This role is not allowed to access Warehouse' };
     }
 
     return {
