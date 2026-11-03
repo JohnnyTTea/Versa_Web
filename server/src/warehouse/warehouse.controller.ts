@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req, UnauthorizedException } from '@nestjs/common';
 import { Request } from 'express';
 import { Public } from '../auth/public.decorator';
 import { WarehouseService } from './warehouse.service';
@@ -45,5 +45,11 @@ export class WarehouseController {
   async today(@Req() req: SessionRequest) {
     this.requireWarehouseUser(req);
     return this.warehouse.getTodaySummaryForUser(Number(req.session?.user_id || 0));
+  }
+
+  @Get('logs')
+  async logs(@Req() req: SessionRequest, @Query('date') date?: string, @Query('username') username?: string) {
+    this.requireWarehouseUser(req);
+    return this.warehouse.getLogsByDate(date, username);
   }
 }

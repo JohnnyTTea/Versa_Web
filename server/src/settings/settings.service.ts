@@ -272,9 +272,6 @@ export class SettingsService {
       );
       const role = r?.[0];
       if (!role) return { ok: false, message: 'role_not_found' };
-      if ((role.role_name || '').toLowerCase() === 'admin') {
-        return { ok: false, message: 'cannot_modify_admin_role' };
-      }
     }
 
     const p = this.normalizePerm(perm);

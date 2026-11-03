@@ -292,7 +292,7 @@ export default function Roles() {
                   <td>{idx + 1}</td>
 
                   <td>
-                    {isAdminRole || !isSuperAdmin ? (
+                    {!isSuperAdmin ? (
                       <input className="compact-input" value={r.role_name} readOnly />
                     ) : (
                       <input
@@ -307,7 +307,7 @@ export default function Roles() {
                   </td>
 
                   <td>
-                    {isAdminRole || !isSuperAdmin ? (
+                    {!isSuperAdmin ? (
                       <input className="compact-input" value={r.description || ""} readOnly />
                     ) : (
                       <input
@@ -327,7 +327,7 @@ export default function Roles() {
 
                     return (
                       <td key={m.key} className="permission-col">
-                        {isAdminRole || !isSuperAdmin ? (
+                        {!isSuperAdmin ? (
                           <input type="checkbox" checked={checked} disabled readOnly />
                         ) : (
                           <input
@@ -345,7 +345,7 @@ export default function Roles() {
                   })}
 
                   <td className="action-col">
-                    {isSuperAdmin && !isAdminRole ? (
+                    {isSuperAdmin ? (
                       !isEditing ? (
                         <button
                           type="button"

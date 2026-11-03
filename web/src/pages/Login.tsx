@@ -13,6 +13,11 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [loginMode, setLoginMode] = useState<"versa" | "warehouse">("versa");
 
+  const loginTitle = loginMode === "warehouse" ? "Warehouse Login" : "Team Members Login";
+  const loginSubtitle = loginMode === "warehouse"
+    ? "Scan and log packing activity from mobile devices."
+    : "Welcome back. Please sign in to continue.";
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -62,7 +67,7 @@ export default function Login() {
   }
 
   return (
-    <div className="login-page">
+    <div className={`login-page ${loginMode === "warehouse" ? "warehouse-mode" : ""}`}>
       <div className="login-shell">
         <div className="login-side">
           <div className="login-brand">
@@ -70,24 +75,29 @@ export default function Login() {
             <span>{loginMode === "warehouse" ? "Warehouse" : "Versa"}</span>
           </div>
           <h2>New Aim LLC.</h2>
-          <h1>{loginMode === "warehouse" ? "Warehouse Login" : "Team Members Login"}</h1>
-          <p>
-            {loginMode === "warehouse"
-              ? "Scan and log packing activity from mobile devices."
-              : "Welcome back. Please sign in to continue."}
-          </p>
+          <h1>{loginTitle}</h1>
+          <p>{loginSubtitle}</p>
         </div>
 
         <div className="login-container">
-          <button
-            type="button"
-            className={`login-mode-toggle ${loginMode === "warehouse" ? "is-warehouse" : ""}`}
-            aria-label={loginMode === "warehouse" ? "Switch to Versa" : "Switch to Warehouse"}
-            onClick={() => setLoginMode((prev) => (prev === "versa" ? "warehouse" : "versa"))}
-            title={loginMode === "warehouse" ? "Switch to Versa" : "Switch to Warehouse"}
-          >
-            <span className="login-mode-toggle-letter">W</span>
-          </button>
+          <div className="login-mode-switcher" aria-label="Choose login mode">
+            <button
+              type="button"
+              className={`login-mode-card ${loginMode === "versa" ? "active" : ""}`}
+              onClick={() => setLoginMode("versa")}
+              aria-pressed={loginMode === "versa"}
+            >
+              <span className="login-mode-card-label">Versa</span>
+            </button>
+            <button
+              type="button"
+              className={`login-mode-card ${loginMode === "warehouse" ? "active" : ""}`}
+              onClick={() => setLoginMode("warehouse")}
+              aria-pressed={loginMode === "warehouse"}
+            >
+              <span className="login-mode-card-label">Warehouse</span>
+            </button>
+          </div>
 
           <h2>Sign In</h2>
 

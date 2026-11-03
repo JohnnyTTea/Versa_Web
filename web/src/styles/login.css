@@ -4,8 +4,8 @@
   padding: 28px;
   font-family: "Segoe UI", sans-serif;
   background:
-    radial-gradient(900px 520px at 0% 0%, rgba(45, 115, 255, 0.22), transparent 60%),
-    radial-gradient(900px 520px at 100% 100%, rgba(14, 165, 233, 0.2), transparent 60%),
+    radial-gradient(900px 520px at 0% 0%, rgba(59, 130, 246, 0.18), transparent 60%),
+    radial-gradient(900px 520px at 100% 100%, rgba(96, 165, 250, 0.12), transparent 60%),
     linear-gradient(145deg, #edf3ff 0%, #f7faff 45%, #eef7ff 100%);
   display: flex;
   justify-content: center;
@@ -33,6 +33,59 @@
     radial-gradient(520px 340px at 92% 8%, rgba(56, 189, 248, 0.38), transparent 63%),
     radial-gradient(460px 320px at 2% 92%, rgba(37, 99, 235, 0.28), transparent 64%),
     linear-gradient(145deg, #e9f4ff 0%, #d8ecff 42%, #e6f3ff 100%);
+}
+
+.login-page.warehouse-mode {
+  background:
+    radial-gradient(900px 520px at 0% 0%, rgba(251, 146, 60, 0.22), transparent 60%),
+    radial-gradient(900px 520px at 100% 100%, rgba(249, 115, 22, 0.14), transparent 60%),
+    linear-gradient(145deg, #fff7ed 0%, #fff1e6 45%, #fffaf5 100%);
+}
+
+.login-page.warehouse-mode .login-side {
+  color: #7c2d12;
+  background:
+    radial-gradient(520px 340px at 92% 8%, rgba(251, 146, 60, 0.38), transparent 63%),
+    radial-gradient(460px 320px at 2% 92%, rgba(249, 115, 22, 0.26), transparent 64%),
+    linear-gradient(145deg, #fff2e7 0%, #ffe7d0 42%, #fff2e7 100%);
+}
+
+.login-page.warehouse-mode .login-brand {
+  border-color: rgba(194, 65, 12, 0.24);
+  color: #9a4a13;
+}
+
+.login-page.warehouse-mode .login-side h1,
+.login-page.warehouse-mode .login-side p {
+  color: #7c2d12;
+}
+
+.login-page.warehouse-mode .login-side p {
+  color: rgba(120, 53, 15, 0.8);
+}
+
+.login-page.warehouse-mode .login-mode-switcher {
+  background: #fff1e6;
+  border-color: #fed7aa;
+}
+
+.login-page.warehouse-mode .login-mode-card {
+  color: #9a4a13;
+}
+
+.login-page.warehouse-mode .login-mode-card.active {
+  background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
+  color: #fff;
+  box-shadow: 0 10px 18px rgba(234, 88, 12, 0.22);
+}
+
+.login-page.warehouse-mode .login-submit {
+  background: linear-gradient(180deg, #f97316 0%, #ea580c 100%);
+}
+
+.login-page.warehouse-mode .forgot-link,
+.login-page.warehouse-mode .register-link a {
+  color: #c2410c;
 }
 
 .login-side::before {
@@ -115,76 +168,48 @@
   overflow: visible;
 }
 
-.login-container .login-mode-toggle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 94px;
-  height: 94px;
-  margin: 0;
-  padding: 0;
-  border: none;
+.login-mode-switcher {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+  margin-bottom: 14px;
+  background: #eef6ff;
+  border: 1px solid #cfe3ff;
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: inset 0 1px 2px rgba(59, 130, 246, 0.08);
+}
+
+.login-mode-card {
+  border: 1px solid transparent;
   background: transparent;
-  color: #fff;
+  color: #1d4ed8;
+  border-radius: 10px;
+  padding: 12px 10px;
+  font-weight: 700;
+  font-size: 15px;
   cursor: pointer;
-  z-index: 3;
-  transition: filter 0.12s ease, transform 0.12s ease;
-  overflow: visible;
+  transition: all 0.18s ease;
 }
 
-.login-container .login-mode-toggle::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 94px;
-  height: 94px;
-  background: linear-gradient(135deg, #1c7ceb 0%, #0f5ed3 100%);
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
-  box-shadow: -12px 16px 22px rgba(17, 76, 192, 0.22);
-  pointer-events: none;
+.login-mode-card.active {
+  background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.22);
 }
 
-.login-container .login-mode-toggle::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 94px;
-  height: 94px;
-  background: linear-gradient(325deg, rgba(255, 255, 255, 0.82) 0%, rgba(255, 255, 255, 0.18) 28%, rgba(255, 255, 255, 0) 46%);
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
-  pointer-events: none;
-}
-
-.login-container .login-mode-toggle:hover {
-  filter: brightness(1.05);
+.login-mode-card:hover {
   transform: translateY(-1px);
 }
 
-.login-container .login-mode-toggle.is-warehouse::before {
-  background: linear-gradient(135deg, #1d84ef 0%, #0d57ce 100%);
-}
-
-.login-container .login-mode-toggle-letter {
-  position: absolute;
-  top: 18px;
-  right: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  font-size: 28px;
-  font-weight: 800;
-  line-height: 1;
-  color: #fff;
-  z-index: 2;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+.login-mode-card-label {
+  display: block;
+  letter-spacing: 0.02em;
 }
 
 .login-container h2 {
-  margin: 72px 0 18px;
+  margin: 18px 0 18px;
   color: #0f172a;
   font-size: 28px;
 }
@@ -203,12 +228,12 @@
 
 .login-container input[type="text"]:focus,
 .login-container input[type="password"]:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.16);
   outline: none;
 }
 
-.login-container button {
+.login-submit {
   width: 100%;
   padding: 11px;
   background: linear-gradient(180deg, #2f6dff 0%, #2156d6 100%);
@@ -221,12 +246,12 @@
   transition: transform 0.12s ease, filter 0.12s ease;
 }
 
-.login-container button:hover {
+.login-submit:hover {
   filter: brightness(1.04);
   transform: translateY(-1px);
 }
 
-.login-container button:disabled {
+.login-submit:disabled {
   background: #9bbcf5;
   cursor: not-allowed;
   transform: none;
@@ -315,27 +340,7 @@
   }
 
   .login-container h2 {
-    margin-top: 62px;
     font-size: 25px;
-  }
-
-  .login-container .login-mode-toggle {
-    width: 72px;
-    height: 72px;
-  }
-
-  .login-container .login-mode-toggle::before,
-  .login-container .login-mode-toggle::after {
-    width: 72px;
-    height: 72px;
-  }
-
-  .login-container .login-mode-toggle-letter {
-    top: 15px;
-    right: 18px;
-    width: 24px;
-    height: 24px;
-    font-size: 22px;
   }
 
   .login-brand {

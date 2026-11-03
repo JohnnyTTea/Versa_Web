@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const todayIso = () => {
+  const offsetMinutes = new Date().getTimezoneOffset();
+  const local = new Date(Date.now() - offsetMinutes * 60000);
+  return local.toISOString().slice(0, 10);
+};
 
 export default function Warehouse() {
   const navigate = useNavigate();
   const [tracking, setTracking] = useState("");
   const [count, setCount] = useState(0);
   const [lastPackedTime, setLastPackedTime] = useState<string | null>(null);
-  const [recent, setRecent] = useState<Array<{ tracking_number: string; packed_at: string }>>([]);
+  const [recent, setRecent] = useState<Array<{ tracking_number: string; shipvia?: string; freight?: string; packed_at: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -45,11 +50,31 @@ export default function Warehouse() {
     const trackingNo = tracking.trim();
     if (!trackingNo) {
       setLoginError("Please enter a tracking number.");
+      setSuccessMessage("");
+      return;
+    }
+
+    const normalized = trackingNo.toUpperCase().replace(/\s+/g, " ");
+    const compact = normalized.replace(/[^A-Z0-9]/g, "");
+    const pureNumeric = /^\d+$/.test(compact);
+    const validTracking = /^(?=.{8,35}$)[A-Z0-9][A-Z0-9 -]*$/.test(normalized)
+      && compact.length >= 8
+      && (
+        /[A-Z]/.test(compact)
+        || /[-\s]/.test(normalized)
+        || compact.length >= 12
+        || (pureNumeric && (compact.length === 10 || compact.length === 12 || compact.length === 14))
+      );
+
+    if (!validTracking) {
+      setLoginError("Only tracking numbers are allowed. Please scan a valid tracking number.");
+      setSuccessMessage("");
       return;
     }
 
     setLoading(true);
     setLoginError("");
+    setSuccessMessage("");
 
     try {
       const res = await fetch("/api/warehouse/scan", {
@@ -61,7 +86,7 @@ export default function Warehouse() {
 
       const data = await res.json();
       if (!res.ok) {
-        setLoginError(data?.message || "Scan failed");
+        setLoginError(data?.message || "Only tracking numbers are allowed. Please scan a valid tracking number.");
         return;
       }
 
@@ -71,6 +96,10 @@ export default function Warehouse() {
       if (data?.recent?.[0]?.packed_at) {
         setLastPackedTime(data.recent[0].packed_at);
       }
+      const shipVia = data?.shipvia ? `Ship Via: ${data.shipvia}` : "";
+      const freight = data?.freight ? `Freight: ${data.freight}` : "";
+      const detail = [shipVia, freight].filter(Boolean).join(" • ");
+      setSuccessMessage(detail ? `Record saved successfully. ${detail}` : "Record saved successfully.");
     } catch {
       setLoginError("Unable to save pack record.");
     } finally {
@@ -155,6 +184,12 @@ export default function Warehouse() {
             </div>
           ) : null}
 
+          {successMessage ? (
+            <div style={{ background: "#dcfce7", color: "#166534", borderRadius: 10, padding: 10, fontSize: 13, marginBottom: 12, fontWeight: 700 }}>
+              {successMessage}
+            </div>
+          ) : null}
+
           <button
             type="submit"
             disabled={loading}
@@ -179,7 +214,12 @@ export default function Warehouse() {
           <div style={{ display: "grid", gap: 8 }}>
             {recent.length ? recent.map((item, index) => (
               <div key={`${item.tracking_number}-${index}`} style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px", fontSize: 13, color: "#0f172a" }}>
-                {item.tracking_number} · {new Date(item.packed_at).toLocaleTimeString()}
+                <div>{item.tracking_number} · {new Date(item.packed_at).toLocaleTimeString()}</div>
+                {(item.shipvia || item.freight) ? (
+                  <div style={{ marginTop: 4, fontSize: 11, color: "#475569" }}>
+                    {item.shipvia ? `Ship Via: ${item.shipvia}` : ""}{item.shipvia && item.freight ? " • " : ""}{item.freight ? `Freight: ${item.freight}` : ""}
+                  </div>
+                ) : null}
               </div>
             )) : (
               <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 12px", fontSize: 13, color: "#64748b" }}>

@@ -19,6 +19,7 @@ import DtoPage from "./pages/dto/DtoPage";
 // Modify Page
 import ModifyPage from "./pages/modify/ModifyPage";
 import Warehouse from "./pages/Warehouse";
+import WarehouseLogs from "./pages/WarehouseLogs";
 // Sales Page
 import Sales from "./pages/salesorder/Sales";
 import Invoice from "./pages/salesorder/Invoices";
@@ -95,6 +96,7 @@ export default function App() {
             <Route path="/settings" element={<Users />} />
             <Route path="/settings/roles" element={<Roles />} />
             <Route path="/settings/log" element={<UserLog />} />
+            <Route path="/settings/warehouse-log" element={<WarehouseLogs />} />
             {/* 兜底：所有未知路径回首页 */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
