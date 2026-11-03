@@ -2,6 +2,7 @@
 # One line = one announcement item
 # Lines starting with # are comments and will be ignored
 
-Updates(2026-10-30):
-Warehouse login mode: right-corner folded switch added for Versa/Warehouse login on desktop and mobile.
-Sales Order Tax Update: upload Excel/CSV files, match AIS order-id to Cpono, preview unmatched rows, and update Taxamt1/Totamt with confirmation before write.
+Updates(2026-11-02):
+Warehouse login mode: Versa and Warehouse now use distinct theme styling and a clearer card-based toggle.
+Warehouse log: summary by user is now clickable and includes Ship Via / Freight details in the record list.
+Production update: static announcement cache is now version-busted to reflect the latest homepage notice immediately after deployment.

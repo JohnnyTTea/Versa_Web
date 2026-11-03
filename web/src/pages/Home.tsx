@@ -129,7 +129,7 @@ const DEFAULT_NOTICES = [
   "Use module search for faster navigation.",
 ];
 const DEFAULT_NOTICE_TITLE = "Announcements";
-const ANNOUNCEMENTS_URL = `${import.meta.env.BASE_URL}announcements.txt`;
+const ANNOUNCEMENTS_URL = `${import.meta.env.BASE_URL}announcements.txt?v=${Date.now()}`;
 const ANNOUNCEMENTS_SEEN_KEY = "versa-announcements-seen-date";
 const MONITOR_PAGE_SIZE = 25;
 const REVIEW_PREVIEWS: ReviewPreview[] = [
@@ -461,7 +461,14 @@ export default function Home() {
   useEffect(() => {
     let mounted = true;
 
-    fetch(ANNOUNCEMENTS_URL, { cache: "no-store" })
+    fetch(ANNOUNCEMENTS_URL, {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        Pragma: "no-cache",
+        Expires: "0",
+      },
+    })
       .then((res) => {
         if (!res.ok) throw new Error("failed to load announcements");
         return res.text();
