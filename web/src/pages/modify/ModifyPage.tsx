@@ -151,11 +151,15 @@ export default function ModifyPage() {
   const [salesOrderResult, setSalesOrderResult] = useState<SalesOrderTaxResult | null>(null);
   const [binQtyResult, setBinQtyResult] = useState<BinQtyResult | null>(null);
   const [binPage, setBinPage] = useState(1);
+  const [binFilter, setBinFilter] = useState<"all" | "skipped" | "shortage">("all");
+  const shortageCount = binQtyResult?.unmatched.filter((row) => row.reason.includes("库存不足")).length ?? 0;
   const binPageSize = 50;
-  const binRows = [
+  const allBinRows = [
     ...(binQtyResult?.matched ?? []).map((row) => ({ kind: "matched" as const, row })),
     ...(binQtyResult?.unmatched ?? []).map((row) => ({ kind: "skipped" as const, row })),
   ];
+  const binRows = allBinRows.filter((entry) => binFilter === "all" ||
+    (entry.kind === "skipped" && (binFilter === "skipped" || entry.row.reason.includes("库存不足"))));
   const binTotalPages = Math.max(1, Math.ceil(binRows.length / binPageSize));
   const binPageClamped = Math.min(binPage, binTotalPages);
   const binStart = (binPageClamped - 1) * binPageSize;
@@ -192,6 +196,7 @@ export default function ModifyPage() {
     setUploadedFile(null);
     setSalesOrderResult(null);
     setBinQtyResult(null);
+    setBinFilter("all");
     setBinPage(1);
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -328,6 +333,7 @@ export default function ModifyPage() {
       setUploadedFile(null);
       setSalesOrderResult(null);
       setBinQtyResult(null);
+      setBinFilter("all");
       setBinPage(1);
       setStatusText("❌ 请选择 .xlsx/.xls/.csv/.tsv/.txt 格式的文件。");
       return;
@@ -335,6 +341,7 @@ export default function ModifyPage() {
     setUploadedFile(file);
     setSalesOrderResult(null);
     setBinQtyResult(null);
+    setBinFilter("all");
     setBinPage(1);
     setStatusText(`已选择文件：${file.name}`);
   }
@@ -500,6 +507,7 @@ export default function ModifyPage() {
         throw new Error(data?.message || data?.error || `请求失败（HTTP ${res.status}）`);
       }
       setBinQtyResult(data);
+      setBinFilter("all");
       setBinPage(1);
       setStatusText(
         write
@@ -513,7 +521,7 @@ export default function ModifyPage() {
     }
   }
 
-  function downloadBinQtyResult() {
+  function downloadBinQtyResult(skippedOnly = false) {
     if (!binQtyResult) return;
     const columns = ["status", "itemno", "bin", "whse", "source rows", "file qty", "old qty", "new qty", "message"];
     const quote = (value: unknown) => {
@@ -523,7 +531,7 @@ export default function ModifyPage() {
       }
       return `"${text.replace(/"/g, '""')}"`;
     };
-    const matchedRows = binQtyResult.matched.map((row) => [
+    const matchedRows = (skippedOnly ? [] : binQtyResult.matched).map((row) => [
       binQtyResult.updated ? "updated" : "matched",
       row.itemno,
       row.bin,
@@ -535,7 +543,7 @@ export default function ModifyPage() {
       "",
     ]);
     const unmatchedRows = binQtyResult.unmatched.map((row) => [
-      "unmatched",
+      "skipped",
       row.itemno,
       row.bin,
       "",
@@ -551,7 +559,7 @@ export default function ModifyPage() {
     const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `AIS-${salesOrderCompany}-bin-qty-result.csv`;
+    link.download = `AIS-${salesOrderCompany}-bin-qty-${skippedOnly ? "not-updated" : "result"}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -638,6 +646,7 @@ export default function ModifyPage() {
                     setUploadedFile(null);
                     setSalesOrderResult(null);
                     setBinQtyResult(null);
+                    setBinFilter("all");
                     setBinPage(1);
                     setStatusText("已移除文件。");
                   }}
@@ -659,7 +668,7 @@ export default function ModifyPage() {
                 {isSalesOrderTaxAction ? "确认并写入 AIS" : "确认更新 Inventory"}
               </button>
               {(isSalesOrderTaxAction ? salesOrderResult : binQtyResult) ? (
-                <button disabled={loading} onClick={isSalesOrderTaxAction ? downloadSalesOrderResult : downloadBinQtyResult}>
+                <button disabled={loading} onClick={() => isSalesOrderTaxAction ? downloadSalesOrderResult() : downloadBinQtyResult()}>
                   下载处理结果（CSV）
                 </button>
               ) : null}
@@ -766,7 +775,19 @@ export default function ModifyPage() {
                 <>
                   <div className="sales-order-result-summary">
                     {binQtyResult.updated ? "已更新" : "预览匹配"} {binQtyResult.matched.length} 个 Inventory 记录；
-                    跳过 {binQtyResult.unmatched.length} 条（库存不足或未匹配），仅扣除有效记录。
+                    {binQtyResult.updated ? "未更新" : "将跳过"} {binQtyResult.unmatched.length} 条，仅扣除有效记录。
+                    {binQtyResult.unmatched.length > 0 && (
+                      <p role="status">
+                        ⚠ {binQtyResult.updated ? "以下记录未更新库存" : "以下记录将不参与更新"}：库存不足 {shortageCount} 条，
+                        未匹配或其他原因 {binQtyResult.unmatched.length - shortageCount} 条。可筛选查看具体原因，或下载未更新清单。
+                      </p>
+                    )}
+                  </div>
+                  <div className="report-export-bar" aria-label="Inventory results filters">
+                    <button aria-pressed={binFilter === "all"} onClick={() => { setBinFilter("all"); setBinPage(1); }}>全部（{allBinRows.length}）</button>
+                    <button aria-pressed={binFilter === "skipped"} onClick={() => { setBinFilter("skipped"); setBinPage(1); }}>仅未更新（{binQtyResult.unmatched.length}）</button>
+                    <button aria-pressed={binFilter === "shortage"} onClick={() => { setBinFilter("shortage"); setBinPage(1); }}>仅库存不足（{shortageCount}）</button>
+                    <button disabled={loading || !binQtyResult.unmatched.length} onClick={() => downloadBinQtyResult(true)}>下载未更新记录（CSV）</button>
                   </div>
                   <div className="chg-table-wrap">
                     <table className="chg-table sales-order-result-table">
@@ -783,13 +804,14 @@ export default function ModifyPage() {
                         </tr>
                       </thead>
                       <tbody>
+                        {binPageRows.length === 0 && <tr><td colSpan={8} className="pad ta-center">当前筛选下没有记录。</td></tr>}
                         {binPageRows.map((entry, index) => {
                           const row = entry.row;
                           const matched = entry.kind === "matched" ? entry.row : null;
                           return (
                             <tr key={JSON.stringify([entry.kind, row.itemno, row.bin])}>
                               <td className="pad ta-center">{binStart + index + 1}</td>
-                              <td className="pad ta-center">{matched ? (binQtyResult.updated ? "已扣除" : "待确认") : "跳过"}</td>
+                              <td className="pad ta-center">{matched ? (binQtyResult.updated ? "已扣除" : "待确认") : (binQtyResult.updated ? "未更新" : "将跳过")}</td>
                               <td className="pad ta-left">{row.itemno}<br />{row.bin}</td>
                               <td className="pad ta-center">{row.source_rows}</td>
                               <td className="pad ta-right">{row.qty}</td>
