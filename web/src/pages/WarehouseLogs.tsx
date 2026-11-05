@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import WarehouseLogDatePicker from "../components/WarehouseLogDatePicker";
 
 type WarehouseLogRow = {
   user_id: number;
@@ -45,7 +46,9 @@ function toCsv(rows: WarehouseLogRow[]) {
 }
 
 export default function WarehouseLogs() {
-  const [date, setDate] = useState(() => getLocalDateValue());
+  const [date, setDate] = useState("");
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [datesLoading, setDatesLoading] = useState(true);
   const [usernameFilter, setUsernameFilter] = useState("");
   const [records, setRecords] = useState<WarehouseLogRow[]>([]);
   const [summary, setSummary] = useState<SummaryRow[]>([]);
@@ -81,8 +84,30 @@ export default function WarehouseLogs() {
   };
 
   useEffect(() => {
-    fetchLogs(date, usernameFilter);
-  }, [date, usernameFilter]);
+    const controller = new AbortController();
+    async function loadDates() {
+      try {
+        const response = await fetch("/api/warehouse/log-dates", { credentials: "include", cache: "no-store", signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || !data?.ok) throw new Error(data?.message || "Unable to load log dates");
+        const dates: string[] = Array.isArray(data.dates) ? data.dates : [];
+        if (controller.signal.aborted) return;
+        setAvailableDates(dates);
+        const today = getLocalDateValue();
+        setDate(dates.includes(today) ? today : dates[0] || "");
+      } catch (err) {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Unable to load log dates");
+      } finally {
+        if (!controller.signal.aborted) setDatesLoading(false);
+      }
+    }
+    loadDates();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (date && availableDates.includes(date)) fetchLogs(date, usernameFilter);
+  }, [date, usernameFilter, availableDates]);
 
   const totalScans = useMemo(() => records.length, [records]);
   const uniqueUsers = useMemo(() => new Set(records.map((r) => r.username)).size, [records]);
@@ -120,13 +145,7 @@ export default function WarehouseLogs() {
             <label htmlFor="log-date" style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>
               Date
             </label>
-            <input
-              id="log-date"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value || getLocalDateValue())}
-              style={{ borderRadius: 10, border: "1px solid #cbd5e1", padding: "10px 12px" }}
-            />
+            <WarehouseLogDatePicker dates={availableDates} value={date} loading={datesLoading} onChange={setDate} />
 
             <label htmlFor="log-user" style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>
               User

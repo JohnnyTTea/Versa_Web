@@ -47,6 +47,12 @@ export class WarehouseController {
     return this.warehouse.getTodaySummaryForUser(Number(req.session?.user_id || 0));
   }
 
+  @Get('log-dates')
+  async logDates(@Req() req: SessionRequest) {
+    this.requireWarehouseUser(req);
+    return this.warehouse.getLogDates();
+  }
+
   @Get('logs')
   async logs(@Req() req: SessionRequest, @Query('date') date?: string, @Query('username') username?: string) {
     this.requireWarehouseUser(req);

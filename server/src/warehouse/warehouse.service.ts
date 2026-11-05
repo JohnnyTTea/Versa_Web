@@ -218,6 +218,18 @@ export class WarehouseService {
     };
   }
 
+  async getLogDates() {
+    await this.ensurePackerTable();
+    const rows = await this.db.query<{ date: string }>(
+      'data0',
+      `SELECT DISTINCT DATE_FORMAT(packed_date, '%Y-%m-%d') AS date
+       FROM warehouse_packer_scan
+       ORDER BY date DESC`,
+      [],
+    );
+    return { ok: true, dates: rows.map((row) => row.date) };
+  }
+
   async getLogsByDate(date?: string, username?: string) {
     await this.ensurePackerTable();
     const targetDate = (date || new Date().toISOString().slice(0, 10)).trim();
