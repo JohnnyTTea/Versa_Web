@@ -4,10 +4,12 @@
 .warehouse-log-date-picker summary[aria-disabled="true"] { color: #94a3b8; background: #f8fafc; cursor: not-allowed; }
 .warehouse-log-calendar { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; width: 280px; max-width: calc(100vw - 48px); padding: 12px; box-sizing: border-box; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 12px 32px #0f172a26; }
 .warehouse-log-calendar-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.warehouse-log-calendar-nav select { flex: 1; min-width: 0; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; background: #fff; color: #0f172a; }
+.warehouse-log-calendar-nav input { flex: 1; min-width: 0; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; background: #fff; color: #0f172a; }
 .warehouse-log-calendar button { border: 0; border-radius: 6px; background: #eff6ff; color: #1d4ed8; cursor: pointer; padding: 7px 0; font: inherit; font-size: 13px; }
 .warehouse-log-calendar-nav button { width: 26px; flex-shrink: 0; }
 .warehouse-log-calendar button:hover:enabled { background: #dbeafe; }
+.warehouse-log-calendar button[data-has-logs="false"] { color: #94a3b8; background: #f8fafc; }
+.warehouse-log-calendar button[data-has-logs="false"]:hover { background: #e2e8f0; }
 .warehouse-log-calendar button[aria-pressed="true"] { background: #1d4ed8; color: #fff; font-weight: 700; }
 .warehouse-log-calendar button:disabled { color: #b4bdca; background: #f8fafc; cursor: not-allowed; }
 .warehouse-log-calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; text-align: center; }

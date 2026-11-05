@@ -46,7 +46,7 @@ function toCsv(rows: WarehouseLogRow[]) {
 }
 
 export default function WarehouseLogs() {
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(() => getLocalDateValue());
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [datesLoading, setDatesLoading] = useState(true);
   const [usernameFilter, setUsernameFilter] = useState("");
@@ -55,7 +55,7 @@ export default function WarehouseLogs() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const fetchLogs = async (targetDate: string, filter = "") => {
+  const fetchLogs = async (targetDate: string, filter = "", signal?: AbortSignal) => {
     setLoading(true);
     setError("");
 
@@ -65,6 +65,7 @@ export default function WarehouseLogs() {
 
       const res = await fetch(`/api/warehouse/logs?${params.toString()}`, {
         credentials: "include",
+        signal,
       });
 
       const data = await res.json();
@@ -72,14 +73,16 @@ export default function WarehouseLogs() {
         throw new Error(data?.message || "Unable to load warehouse log");
       }
 
+      if (signal?.aborted) return;
       setRecords(Array.isArray(data?.records) ? data.records : []);
       setSummary(Array.isArray(data?.summary) ? data.summary : []);
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : "Unable to load warehouse log");
       setRecords([]);
       setSummary([]);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   };
 
@@ -93,8 +96,6 @@ export default function WarehouseLogs() {
         const dates: string[] = Array.isArray(data.dates) ? data.dates : [];
         if (controller.signal.aborted) return;
         setAvailableDates(dates);
-        const today = getLocalDateValue();
-        setDate(dates.includes(today) ? today : dates[0] || "");
       } catch (err) {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : "Unable to load log dates");
       } finally {
@@ -106,8 +107,10 @@ export default function WarehouseLogs() {
   }, []);
 
   useEffect(() => {
-    if (date && availableDates.includes(date)) fetchLogs(date, usernameFilter);
-  }, [date, usernameFilter, availableDates]);
+    const controller = new AbortController();
+    fetchLogs(date, usernameFilter, controller.signal);
+    return () => controller.abort();
+  }, [date, usernameFilter]);
 
   const totalScans = useMemo(() => records.length, [records]);
   const uniqueUsers = useMemo(() => new Set(records.map((r) => r.username)).size, [records]);
