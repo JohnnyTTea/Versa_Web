@@ -36,6 +36,7 @@ import Vendor from "./pages/purchase/Vendor";
 import ReportExportPage from "./pages/reports/ReportExportPage";
 import DbBrowserPage from "./pages/reports/DbBrowserPage";
 import DataReportPage from "./pages/reports/DataReportPage";
+import SkuFitmentPage from "./pages/reports/SkuFitmentPage";
 // Settings Page
 import Roles from "./pages/settings/Roles";
 import Users from "./pages/settings/Users";
@@ -58,7 +59,8 @@ export default function App() {
         <Routes>
           {/* 未登录页面 */}
           <Route path="/login" element={<Login />} />
-          <Route path="/warehouse" element={<Warehouse />} />
+          <Route path="/warehouse" element={<Login mode="warehouse" />} />
+          <Route path="/warehouse/packing" element={<Warehouse />} />
 
           {/* 受保护区域 */}
           <Route element={<ProtectedLayout />}>
@@ -91,6 +93,7 @@ export default function App() {
             {/* Report */}
             <Route path="/report" element={<ReportExportPage/>} />
             <Route path="/report/data" element={<DataReportPage />} />
+            <Route path="/report/sku-fitment" element={<SkuFitmentPage />} />
             <Route path="/report/database" element={<DbBrowserPage />} />
             {/* Settings */}
             <Route path="/settings" element={<Users />} />

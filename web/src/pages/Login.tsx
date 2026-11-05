@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import logo from "../assets/logo.png";
 import "../styles/login.css";
 
-export default function Login() {
+export default function Login({ mode = "versa" }: { mode?: "versa" | "warehouse" }) {
   const navigate = useNavigate();
 
   const [username, setUsername] = useState("");
@@ -11,7 +11,7 @@ export default function Login() {
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loginMode, setLoginMode] = useState<"versa" | "warehouse">("versa");
+  const loginMode = mode;
 
   const loginTitle = loginMode === "warehouse" ? "Warehouse Login" : "Team Members Login";
   const loginSubtitle = loginMode === "warehouse"
@@ -54,7 +54,7 @@ export default function Login() {
       }
 
       if (loginMode === "warehouse") {
-        navigate("/warehouse", { replace: true });
+        navigate("/warehouse/packing", { replace: true });
         return;
       }
 
@@ -84,7 +84,7 @@ export default function Login() {
             <button
               type="button"
               className={`login-mode-card ${loginMode === "versa" ? "active" : ""}`}
-              onClick={() => setLoginMode("versa")}
+              onClick={() => navigate("/login")}
               aria-pressed={loginMode === "versa"}
             >
               <span className="login-mode-card-label">Versa</span>
@@ -92,7 +92,7 @@ export default function Login() {
             <button
               type="button"
               className={`login-mode-card ${loginMode === "warehouse" ? "active" : ""}`}
-              onClick={() => setLoginMode("warehouse")}
+              onClick={() => navigate("/warehouse")}
               aria-pressed={loginMode === "warehouse"}
             >
               <span className="login-mode-card-label">Warehouse</span>

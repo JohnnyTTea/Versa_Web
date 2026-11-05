@@ -3,6 +3,6 @@
 # Lines starting with # are comments and will be ignored
 
 Updates(2026-11-02):
-Warehouse login mode: Versa and Warehouse now use distinct theme styling and a clearer card-based toggle.
-Warehouse log: summary by user is now clickable and includes Ship Via / Freight details in the record list.
-Production update: static announcement cache is now version-busted to reflect the latest homepage notice immediately after deployment.
+Warehouse: Added warehouse, picker and packer users log Added
+Data Modification: Inventory udpate added
+Data Report: SKU Fitment report added

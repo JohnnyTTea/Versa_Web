@@ -129,7 +129,7 @@ const DEFAULT_NOTICES = [
   "Use module search for faster navigation.",
 ];
 const DEFAULT_NOTICE_TITLE = "Announcements";
-const ANNOUNCEMENTS_URL = `${import.meta.env.BASE_URL}announcements.txt?v=${Date.now()}`;
+const ANNOUNCEMENTS_URL = "/api/announcements";
 const ANNOUNCEMENTS_SEEN_KEY = "versa-announcements-seen-date";
 const MONITOR_PAGE_SIZE = 25;
 const REVIEW_PREVIEWS: ReviewPreview[] = [

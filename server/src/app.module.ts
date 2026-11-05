@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AnnouncementsController } from './announcements.controller';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -34,6 +35,7 @@ import { DefaultPackerUsersSeed } from './seed/default-packer-users.seed';
     SettingsModule,
     WarehouseModule,
   ],
+  controllers: [AnnouncementsController],
   providers: [DefaultPackerUsersSeed],
 })
 export class AppModule {}

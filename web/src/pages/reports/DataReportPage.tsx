@@ -204,6 +204,7 @@ async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
+
 export default function DataReportPage() {
   const [vendorInput, setVendorInput] = useState("ALTEC-YR");
   const [skuInput, setSkuInput] = useState("9-T-0308");
@@ -212,10 +213,13 @@ export default function DataReportPage() {
 
   const [vendorResp, setVendorResp] = useState<VendorDataResp | null>(null);
   const [skuResp, setSkuResp] = useState<SkuDataResp | null>(null);
+  const [skuFeatureResp, setSkuFeatureResp] = useState<any>(null);
   const [vendorLoading, setVendorLoading] = useState(false);
   const [skuLoading, setSkuLoading] = useState(false);
+  const [skuFeatureLoading, setSkuFeatureLoading] = useState(false);
   const [vendorErr, setVendorErr] = useState("");
   const [skuErr, setSkuErr] = useState("");
+  const [skuFeatureErr, setSkuFeatureErr] = useState("");
   const [chartStartMonth, setChartStartMonth] = useState(defaultChartStartMonth);
   const [chartEndMonth, setChartEndMonth] = useState(defaultChartEndMonth);
 
@@ -248,7 +252,9 @@ export default function DataReportPage() {
   useEffect(() => {
     if (!sku) {
       setSkuResp(null);
+      setSkuFeatureResp(null);
       setSkuErr("");
+      setSkuFeatureErr("");
       return;
     }
 
@@ -267,6 +273,32 @@ export default function DataReportPage() {
         setSkuErr(String(e?.message || e || "SKU load failed"));
       })
       .finally(() => setSkuLoading(false));
+
+    return () => controller.abort();
+  }, [sku]);
+
+  useEffect(() => {
+    if (!sku) {
+      setSkuFeatureResp(null);
+      setSkuFeatureErr("");
+      return;
+    }
+
+    const controller = new AbortController();
+    setSkuFeatureLoading(true);
+    setSkuFeatureErr("");
+
+    apiGet<any>(`/api/report/data/sku/features?sku=${encodeURIComponent(sku)}`, controller.signal)
+      .then((data) => {
+        setSkuFeatureResp(data);
+        setSkuFeatureErr(data.ok ? "" : data.message || "Feature extraction failed");
+      })
+      .catch((e: any) => {
+        if (e?.name === "AbortError") return;
+        setSkuFeatureResp(null);
+        setSkuFeatureErr(String(e?.message || e || "Feature extraction failed"));
+      })
+      .finally(() => setSkuFeatureLoading(false));
 
     return () => controller.abort();
   }, [sku]);
@@ -487,6 +519,35 @@ export default function DataReportPage() {
           </form>
         </div>
         {skuErr ? <div className="dr-error">{skuErr}</div> : null}
+
+        <div className="dr-table-frame" style={{ marginBottom: 18 }}>
+          <div className="dr-table-wrap">
+            <div className="dr-chart-card" style={{ padding: 18 }}>
+              <div className="dr-chart-head">
+                <div className="dr-chart-title">SKU Feature Extraction</div>
+              </div>
+              {skuFeatureLoading ? <div className="dr-loading">Extracting item attributes...</div> : null}
+              {skuFeatureErr ? <div className="dr-error">{skuFeatureErr}</div> : null}
+              {!skuFeatureLoading && skuFeatureResp?.ok && skuFeatureResp?.extracted ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                  <div><strong>Item</strong><div>{skuFeatureResp.extracted.itemno}</div></div>
+                  <div><strong>Make</strong><div>{skuFeatureResp.extracted.make || "-"}</div></div>
+                  <div><strong>Model</strong><div>{skuFeatureResp.extracted.model || "-"}</div></div>
+                  <div><strong>Year Range</strong><div>{skuFeatureResp.extracted.fitmentRange || "-"}</div></div>
+                  <div><strong>Part Type</strong><div>{skuFeatureResp.extracted.partType || "-"}</div></div>
+                  <div><strong>Style</strong><div>{skuFeatureResp.extracted.style || "-"}</div></div>
+                  <div><strong>Color</strong><div>{skuFeatureResp.extracted.color || "-"}</div></div>
+                  <div><strong>Material</strong><div>{skuFeatureResp.extracted.material || "-"}</div></div>
+                  <div><strong>Qty / Set</strong><div>{skuFeatureResp.extracted.qtyPerSet ?? "-"}</div></div>
+                  <div><strong>Carton</strong><div>{skuFeatureResp.extracted.dimensions?.carton ? `${skuFeatureResp.extracted.dimensions.carton.length} x ${skuFeatureResp.extracted.dimensions.carton.width} x ${skuFeatureResp.extracted.dimensions.carton.height}` : "-"}</div></div>
+                  <div><strong>Unit</strong><div>{skuFeatureResp.extracted.dimensions?.unit ? `${skuFeatureResp.extracted.dimensions.unit.length} x ${skuFeatureResp.extracted.dimensions.unit.width} x ${skuFeatureResp.extracted.dimensions.unit.height}` : "-"}</div></div>
+                  <div><strong>Fitment Text</strong><div>{skuFeatureResp.extracted.fitmentText || "-"}</div></div>
+                  <div style={{ gridColumn: "1 / -1" }}><strong>Raw Desc</strong><div>{skuFeatureResp.extracted.desc1 || "-"} {skuFeatureResp.extracted.desc2 ? `| ${skuFeatureResp.extracted.desc2}` : ""}</div></div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
 
         <div className="dr-table-frame">
           <table className="dr-month-table" aria-hidden="true">

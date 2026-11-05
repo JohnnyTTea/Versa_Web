@@ -23,7 +23,7 @@ export default function Warehouse() {
         const meRes = await fetch("/api/me", { credentials: "include", cache: "no-store" });
         const me = meRes.ok ? await meRes.json() : null;
         if (!me?.ok || !me?.user?.username) {
-          navigate("/login", { replace: true });
+          navigate("/warehouse", { replace: true });
           return;
         }
         if ((me.user.role_name || "").trim().toLowerCase() === "packer") {
@@ -129,7 +129,7 @@ export default function Warehouse() {
           </div>
           <button
             type="button"
-            onClick={() => navigate("/login", { replace: true })}
+            onClick={() => navigate("/warehouse", { replace: true })}
             style={{
               border: "none",
               background: "#eff6ff",

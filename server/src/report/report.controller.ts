@@ -20,6 +20,38 @@ export class ReportController {
     return await this.reports.getDataReportSku(itemId);
   }
 
+  @Get('data/sku/features')
+  async dataSkuFeatures(@Query('sku') sku?: string) {
+    const itemId = (sku || '').trim();
+    if (!itemId) return { ok: false, message: 'Missing sku', item: null, extracted: null };
+    return await this.reports.getDataReportSkuFeatures(itemId);
+  }
+
+  @Post('data/analyze')
+  async analyzeRows(
+    @Body() body: { rows?: Array<Record<string, any>>; fileName?: string; async?: boolean },
+  ) {
+    const rows = Array.isArray(body?.rows) ? body.rows : [];
+    if (!rows.length) {
+      return { ok: false, message: 'No rows to analyze', results: [] };
+    }
+
+    if (body?.async) {
+      return await this.reports.startAnalyzeJob(rows, body?.fileName || 'uploaded-data');
+    }
+
+    return await this.reports.analyzeRows(rows, body?.fileName || 'uploaded-data');
+  }
+
+  @Get('data/analyze/progress')
+  async analyzeProgress(@Query('jobId') jobId?: string) {
+    if (!jobId) {
+      return { ok: false, status: 'failed', message: 'Missing jobId', results: [] };
+    }
+
+    return await this.reports.getAnalyzeJobProgress(jobId);
+  }
+
   @Post('generate')
   async generate(
     @Body()

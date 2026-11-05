@@ -111,6 +111,49 @@ export class ModifyController {
     );
   }
 
+  @Post('bin-qty/preview')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  async previewBinQty(
+    @UploadedFile()
+    file: { buffer?: Buffer; originalname?: string } | undefined,
+    @Body() body: { company?: string },
+    @Req() req: Request,
+  ) {
+    this.assertModifyPermission(req);
+    return this.modify.previewBinQty(
+      this.getExcelBuffer(file),
+      body?.company || '',
+      file?.originalname || '',
+    );
+  }
+
+  @Post('bin-qty/execute')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }),
+  )
+  async executeBinQty(
+    @UploadedFile()
+    file: { buffer?: Buffer; originalname?: string } | undefined,
+    @Body() body: { company?: string; expected?: string },
+    @Req() req: Request,
+  ) {
+    this.assertModifyPermission(req);
+    let expectedRows: unknown;
+    try {
+      expectedRows = JSON.parse(body?.expected || '');
+    } catch {
+      throw new BadRequestException('预览信息缺失或格式不正确，请重新预览');
+    }
+    return this.modify.executeBinQty(
+      this.getExcelBuffer(file),
+      body?.company || '',
+      expectedRows,
+      file?.originalname || '',
+    );
+  }
+
   // GET /api/modify/ping
   @Get('ping')
   ping() {

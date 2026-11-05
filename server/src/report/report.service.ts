@@ -862,6 +862,692 @@ export class ReportService {
     };
   }
 
+  private extractNumericRange(value: string): string {
+    const match = String(value || '').match(/(\d{2,4})\s*[-–]\s*(\d{2,4})/);
+    if (!match) return '';
+    return `${match[1]}-${match[2]}`;
+  }
+
+  private extractYearRange(text: string): string {
+    const direct = this.extractNumericRange(text);
+    if (direct) return direct;
+
+    const yearMatch = String(text || '').match(/(19|20)\d{2}/g);
+    if (yearMatch && yearMatch.length >= 2) {
+      return `${yearMatch[0]}-${yearMatch[yearMatch.length - 1]}`;
+    }
+    return '';
+  }
+
+  private extractMakeModel(text: string) {
+    const normalized = (text || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return { make: '', model: '', fitmentText: '' };
+
+    const makePatterns = [
+      'lexus',
+      'bmw',
+      'honda',
+      'subaru',
+      'toyota',
+      'audi',
+      'nissan',
+      'ford',
+      'mercedes',
+      'volkswagen',
+      'acura',
+      'mazda',
+      'tesla',
+      'mini',
+      'jaguar',
+      'cadillac',
+      'chrysler',
+      'porsche',
+      'hyundai',
+      'kia',
+      'mitsubishi',
+      'volvo',
+    ];
+
+    const foundMake = makePatterns.find((m) => normalized.toLowerCase().includes(m));
+    if (!foundMake) {
+      return { make: '', model: '', fitmentText: normalized };
+    }
+
+    const remainder = normalized.slice(normalized.toLowerCase().indexOf(foundMake));
+    const modelMatch = remainder.match(/([a-z0-9]+(?:\s+[a-z0-9]+)?)\s*(?:front|rear|side|lip|spoiler|grille|diffuser|skirt|splitter|bumper|hood|roof|pr|tr)/i);
+    const candidate = modelMatch ? modelMatch[1].trim() : remainder.split(/\s+/).slice(0, 3).join(' ');
+    const model = candidate
+      .replace(/\b(front|rear|side|lip|spoiler|grille|diffuser|skirt|splitter|bumper|hood|roof|pr|tr)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return {
+      make: foundMake,
+      model,
+      fitmentText: normalized,
+    };
+  }
+
+  private detectPartType(text: string) {
+    const normalized = (text || '').toLowerCase();
+    const patterns = [
+      ['front bumper lip', 'front bumper lip'],
+      ['front lip', 'front lip'],
+      ['rear bumper lip', 'rear bumper lip'],
+      ['side skirt', 'side skirt'],
+      ['spoiler', 'spoiler'],
+      ['splitter', 'splitter'],
+      ['grille', 'grille'],
+      ['diffuser', 'diffuser'],
+      ['roof rack', 'roof rack'],
+      ['hood', 'hood'],
+      ['mirror cover', 'mirror cover'],
+      ['valance', 'valance'],
+    ];
+
+    for (const [pattern, label] of patterns) {
+      if (normalized.includes(pattern)) return label;
+    }
+
+    return 'generic accessory';
+  }
+
+  private detectStyle(text: string) {
+    const normalized = (text || '').toLowerCase();
+    const stylePatterns = [
+      'ams',
+      'cs',
+      'tr',
+      'type r',
+      'type-r',
+      'carbon',
+      'ural',
+      'sport',
+      'style',
+      'version',
+      'lp',
+      'm performance',
+    ];
+
+    const found = stylePatterns.find((p) => normalized.includes(p));
+    return found ? found.toUpperCase() : 'standard';
+  }
+
+  private detectColor(text: string) {
+    const normalized = (text || '').toLowerCase();
+    if (normalized.includes('carbon')) return 'carbon fiber look';
+    if (normalized.includes('black')) return 'black';
+    if (normalized.includes('matte')) return 'matte';
+    if (normalized.includes('gloss')) return 'gloss';
+    if (normalized.includes('red')) return 'red';
+    if (normalized.includes('silver')) return 'silver';
+    if (normalized.includes('white')) return 'white';
+    if (normalized.includes('gray')) return 'gray';
+    if (normalized.includes('blue')) return 'blue';
+    return 'not specified';
+  }
+
+  private detectMaterial(text: string) {
+    const normalized = (text || '').toLowerCase();
+    if (normalized.includes('urethane')) return 'urethane';
+    if (normalized.includes('pp')) return 'PP';
+    if (normalized.includes('pu')) return 'PU';
+    if (normalized.includes('abs')) return 'ABS';
+    if (normalized.includes('fiberglass')) return 'fiberglass';
+    if (normalized.includes('carbon')) return 'carbon fiber';
+    if (normalized.includes('plastic')) return 'plastic';
+    if (normalized.includes('aluminum')) return 'aluminum';
+    return 'not specified';
+  }
+
+  async getDataReportSkuFeatures(itemId: string) {
+    const itemRows = await this.db.query<any>(
+      'aisdata0',
+      `
+      SELECT
+        Itemno,
+        Desc1,
+        Desc2,
+        Type,
+        Matrix,
+        Vendno,
+        Qtpack,
+        Clength,
+        Cwidth,
+        Cheight,
+        Ulength,
+        Uwidth,
+        Uheight,
+        Price1,
+        Price2,
+        Price3,
+        Price4,
+        Price5
+      FROM aisdata0.item
+      WHERE Itemno = ?
+      LIMIT 1
+      `,
+      [itemId],
+    );
+
+    const item = Array.isArray(itemRows) ? itemRows[0] : null;
+    if (!item) {
+      return {
+        ok: false,
+        message: 'SKU not found',
+        item: null,
+        extracted: null,
+      };
+    }
+
+    const extracted = this.buildSkuFeatureObject(item);
+
+    return {
+      ok: true,
+      item: {
+        Itemno: item.Itemno,
+        Desc1: item.Desc1,
+        Desc2: item.Desc2,
+        Vendno: item.Vendno,
+      },
+      extracted,
+    };
+  }
+
+  private buildSkuFeatureObject(item: any) {
+    const combined = `${item.Desc1 || ''} ${item.Desc2 || ''}`.trim();
+    const fitment = this.extractYearRange(combined) || this.extractYearRange(item.Desc1 || '') || '';
+    const makeModel = this.extractMakeModel(combined);
+
+    return {
+      itemno: item.Itemno,
+      desc1: item.Desc1 || '',
+      desc2: item.Desc2 || '',
+      partType: this.detectPartType(combined),
+      style: this.detectStyle(combined),
+      fitmentRange: fitment,
+      make: makeModel.make,
+      model: makeModel.model,
+      fitmentText: makeModel.fitmentText,
+      color: this.detectColor(combined),
+      material: this.detectMaterial(combined),
+      dimensions: {
+        carton: {
+          length: item.Clength ?? null,
+          width: item.Cwidth ?? null,
+          height: item.Cheight ?? null,
+        },
+        unit: {
+          length: item.Ulength ?? null,
+          width: item.Uwidth ?? null,
+          height: item.Uheight ?? null,
+        },
+      },
+      qtyPerSet: item.Qtpack ?? null,
+      pricing: {
+        price1: item.Price1 ?? null,
+        price2: item.Price2 ?? null,
+        price3: item.Price3 ?? null,
+        price4: item.Price4 ?? null,
+        price5: item.Price5 ?? null,
+      },
+      vendor: item.Vendno ?? null,
+      type: item.Type ?? null,
+      matrix: item.Matrix ?? null,
+      raw: {
+        itemno: item.Itemno,
+        desc1: item.Desc1 || '',
+        desc2: item.Desc2 || '',
+      },
+    };
+  }
+
+  private stripHtml(text: string) {
+    return String(text || '')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, ' and ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private async fetchTargetPageText(targetUrl: string): Promise<string> {
+    if (!targetUrl) return '';
+    try {
+      const response = await fetch(targetUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+      if (!response.ok) return '';
+      const html = await response.text();
+      return this.stripHtml(html);
+    } catch {
+      return '';
+    }
+  }
+
+  private normalizeText(v: any) {
+    return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  private normalizeComparableValue(v: any) {
+    const text = this.normalizeText(v);
+    if (!text || text === 'not specified' || text === 'n/a' || text === 'na') return '';
+
+    let normalized = text;
+    const rangeMatch = normalized.match(/^(\d{1,4})\s*(?:-|to|–|~)\s*(\d{1,4})$/);
+    if (rangeMatch) {
+      const rawStart = rangeMatch[1];
+      const rawEnd = rangeMatch[2];
+      const start = Number(rawStart);
+      const end = Number(rawEnd);
+      const formatStart = rawStart.length === 2 ? (start >= 90 ? 1900 + start : 2000 + start) : start;
+      const formatEnd = rawEnd.length === 2 ? (end >= 90 ? 1900 + end : 2000 + end) : end;
+      normalized = `${formatStart}-${formatEnd}`;
+    } else {
+      normalized = text
+        .replace(/[_-]/g, ' ')
+        .replace(/\burethane\b/g, 'pu')
+        .replace(/\bpolyurethane\b/g, 'pu')
+        .replace(/\bpolypropylene\b/g, 'pp')
+        .replace(/\bpp\b/g, 'pp')
+        .replace(/\bpu\b/g, 'pu')
+        .replace(/\bfront bumper lip\b/g, 'front bumper lip')
+        .replace(/\brear bumper lip\b/g, 'rear bumper lip')
+        .replace(/\bfront lip\b/g, 'front lip')
+        .replace(/\brear lip\b/g, 'rear lip')
+        .replace(/\bside skirt\b/g, 'side skirt')
+        .replace(/\bspoiler\b/g, 'spoiler')
+        .replace(/\bgrille\b/g, 'grille')
+        .replace(/\bdiffuser\b/g, 'diffuser')
+        .replace(/\bcarbon fiber\b/g, 'carbon')
+        .replace(/\bcarbon fiber look\b/g, 'carbon')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    return normalized;
+  }
+
+  private valuesAreEquivalent(a: any, b: any) {
+    const av = this.normalizeComparableValue(a);
+    const bv = this.normalizeComparableValue(b);
+    if (!av || !bv) return true;
+    if (av === bv || av.includes(bv) || bv.includes(av)) return true;
+    return false;
+  }
+
+  private compareFeatureValues(a: any, b: any, key: string) {
+    const av = this.normalizeComparableValue(a);
+    const bv = this.normalizeComparableValue(b);
+    if (!av && !bv) return { ok: true, reason: null };
+    if (!av || !bv) return { ok: true, reason: null };
+    if (this.valuesAreEquivalent(a, b)) return { ok: true, reason: null };
+    return { ok: false, reason: `${key}: ${a} != ${b}` };
+  }
+
+  private normalizeKeyName(key: string) {
+    return String(key ?? '')
+      .normalize('NFKC')
+      .replace(/\uFEFF/g, '')
+      .replace(/[\s_\-]+/g, '')
+      .replace(/[^\p{L}\p{N}]/gu, '')
+      .toLowerCase();
+  }
+
+  private keyMatches(rowKey: string, candidate: string) {
+    return this.normalizeKeyName(rowKey) === this.normalizeKeyName(candidate);
+  }
+
+  private getRowValue(row: Record<string, any>, keys: string[]) {
+    for (const key of keys) {
+      for (const [rowKey, value] of Object.entries(row)) {
+        if (this.keyMatches(rowKey, key) && value != null && String(value).trim() !== '') {
+          return String(value).trim();
+        }
+      }
+    }
+    return '';
+  }
+
+  private extractSkuFromRow(row: Record<string, any>) {
+    const candidate = this.getRowValue(row, [
+      'SKU',
+      'sku',
+      'Itemno',
+      'itemno',
+      'Item No',
+      'item_no',
+      'Product SKU',
+      'product_sku',
+      'Part Number',
+      'part_number',
+      'Product Number',
+      'Goods ID',
+      'goodsid',
+      'goods_id',
+      'goods no',
+      'goodsno',
+      '货号',
+      'Cpono',
+      'cpono',
+    ]);
+    return candidate.replace(/^['"]|['"]$/g, '').trim();
+  }
+
+  private extractTargetUrlFromRow(row: Record<string, any>) {
+    const candidateKeys = [
+      'target_url',
+      'targetUrl',
+      'Target URL',
+      'TargetUrl',
+      'target_link',
+      'targetLink',
+      'product_url',
+      'productUrl',
+      'Product URL',
+      'reference_url',
+      'referenceUrl',
+      'Reference URL',
+      'target link',
+      'Target Link',
+      'URL',
+      'url',
+      'link',
+      'Link',
+      '参考链接',
+      '参考URL',
+      '参考地址',
+      '链接',
+      '网址',
+      'URL地址',
+      'pageurl',
+      'productlink',
+      'targeturl',
+      '参考链接URL',
+      '参考链接地址',
+      '参考URL地址',
+      'target url',
+      'result',
+      '检查结果',
+      'check result',
+    ];
+
+    const direct = this.getRowValue(row, candidateKeys);
+    if (direct) {
+      const clean = direct.replace(/^['"]|['"]$/g, '').trim();
+      if (clean) return /^https?:\/\//i.test(clean) ? clean : /^www\./i.test(clean) ? `https://${clean}` : clean;
+    }
+
+    for (const [key, value] of Object.entries(row)) {
+      if (value == null || String(value).trim() === '') continue;
+      const normalizedKey = this.normalizeKeyName(key);
+      const normalizedValue = String(value).trim();
+      const isLinkKey =
+        normalizedKey.includes('url') ||
+        normalizedKey.includes('link') ||
+        normalizedKey.includes('链接') ||
+        normalizedKey.includes('网址') ||
+        normalizedKey.includes('参考链接') ||
+        normalizedKey.includes('网页');
+      if (isLinkKey) {
+        return /^https?:\/\//i.test(normalizedValue) ? normalizedValue : /^www\./i.test(normalizedValue) ? `https://${normalizedValue}` : normalizedValue;
+      }
+    }
+
+    return '';
+  }
+
+  private readonly analyzeJobs = new Map<string, {
+    jobId: string;
+    fileName: string;
+    total: number;
+    done: number;
+    status: 'running' | 'done' | 'failed';
+    results: any[];
+    error?: string;
+  }>();
+
+  private async analyzeSingleRow(row: Record<string, any>, fileName?: string) {
+    const sku = this.extractSkuFromRow(row);
+    const targetUrl = this.extractTargetUrlFromRow(row);
+    if (!sku) {
+      return {
+        sku: '',
+        fileName,
+        verdict: 'NOT FIT',
+        confidence: 'low',
+        mismatches: ['SKU column missing from uploaded file'],
+        reason: 'SKU column missing from uploaded file',
+      };
+    }
+
+    const existing = await this.getSkuByItemno(sku);
+    if (!existing) {
+      return {
+        sku,
+        fileName,
+        verdict: 'NOT FIT',
+        confidence: 'low',
+        mismatches: ['SKU not found in local AIS database'],
+        reason: 'SKU not found in local AIS database',
+      };
+    }
+
+    const itemFeatures = this.buildSkuFeatureObject(existing);
+    const externalText = targetUrl ? await this.fetchTargetPageText(targetUrl) : '';
+    const externalFeatures = this.extractTextFeatures(externalText || `${existing.Desc1 || ''} ${existing.Desc2 || ''}`);
+    const comparison = this.compareSkuFeatures(itemFeatures, externalFeatures, targetUrl);
+    const mismatches = comparison.mismatches;
+    const verdict = comparison.verdict;
+    const confidence = verdict === 'FIT' ? 'medium' : verdict === 'REVIEW' ? 'medium' : verdict === 'INVALID' ? 'low' : 'high';
+
+    return {
+      sku,
+      fileName,
+      verdict,
+      confidence,
+      mismatches,
+      reason: mismatches.length ? mismatches.join('; ') : 'No major mismatch found.',
+      internal: itemFeatures,
+      targetUrl,
+    };
+  }
+
+  async analyzeRows(rows: Array<Record<string, any>>, fileName?: string) {
+    const results = [] as any[];
+    for (const row of rows) {
+      results.push(await this.analyzeSingleRow(row, fileName));
+    }
+    return { ok: true, fileName, results };
+  }
+
+  async startAnalyzeJob(rows: Array<Record<string, any>>, fileName?: string) {
+    const jobId = `analyze-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const job = {
+      jobId,
+      fileName: fileName || 'uploaded-data',
+      total: rows.length,
+      done: 0,
+      status: 'running' as const,
+      results: [] as any[],
+    };
+    this.analyzeJobs.set(jobId, job);
+
+    void this.runAnalyzeJob(jobId, rows, fileName);
+
+    return {
+      ok: true,
+      jobId,
+      status: 'running',
+      total: rows.length,
+      done: 0,
+      fileName: job.fileName,
+      results: [],
+    };
+  }
+
+  async getAnalyzeJobProgress(jobId: string) {
+    const job = this.analyzeJobs.get(jobId);
+    if (!job) {
+      return { ok: false, status: 'failed', message: 'Job not found', jobId, total: 0, done: 0, results: [] };
+    }
+
+    return {
+      ok: true,
+      jobId,
+      fileName: job.fileName,
+      status: job.status,
+      total: job.total,
+      done: job.done,
+      results: job.results,
+      error: job.error || undefined,
+      message: job.status === 'failed' ? job.error || 'Analyze failed' : undefined,
+    };
+  }
+
+  private async runAnalyzeJob(jobId: string, rows: Array<Record<string, any>>, fileName?: string) {
+    const job = this.analyzeJobs.get(jobId);
+    if (!job) return;
+
+    try {
+      const results = [] as any[];
+      for (let index = 0; index < rows.length; index += 1) {
+        const row = rows[index];
+        results.push(await this.analyzeSingleRow(row, fileName));
+
+        const current = this.analyzeJobs.get(jobId);
+        if (current) {
+          current.done = index + 1;
+          current.results = results.slice();
+          current.status = current.done >= current.total ? 'done' : 'running';
+        }
+      }
+
+      const finished = this.analyzeJobs.get(jobId);
+      if (finished) {
+        finished.done = finished.total;
+        finished.results = results;
+        finished.status = 'done';
+      }
+    } catch (error: any) {
+      const current = this.analyzeJobs.get(jobId);
+      if (current) {
+        current.status = 'failed';
+        current.error = error?.message || 'Analyze failed';
+      }
+    }
+  }
+
+  private async getSkuByItemno(sku: string) {
+    const rows = await this.db.query<any>(
+      'aisdata0',
+      `
+      SELECT *
+      FROM aisdata0.item
+      WHERE Itemno = ?
+      LIMIT 1
+      `,
+      [sku],
+    );
+    return Array.isArray(rows) && rows[0] ? rows[0] : null;
+  }
+
+  private extractTextFeatures(text: string) {
+    const source = String(text || '').toLowerCase();
+    return {
+      fitmentRange: this.extractYearRange(source) || '',
+      make: this.extractMakeModel(source).make,
+      model: this.extractMakeModel(source).model,
+      partType: this.detectPartType(source),
+      style: this.detectStyle(source),
+      color: this.detectColor(source),
+      material: this.detectMaterial(source),
+      text: source,
+    };
+  }
+
+  private compareSkuFeatures(itemFeatures: any, externalFeatures: any, targetUrl: string) {
+    const mismatches: string[] = [];
+    const hardMismatches: string[] = [];
+    const softMismatches: string[] = [];
+
+    if (!targetUrl) {
+      return {
+        verdict: 'INVALID',
+        mismatches: ['No target URL provided for fitment verification'],
+        hardMismatches: ['No target URL provided for fitment verification'],
+        softMismatches: [],
+      };
+    }
+
+    const checks = [
+      ['brand', itemFeatures.make, externalFeatures.make],
+      ['model', itemFeatures.model, externalFeatures.model],
+      ['part type', itemFeatures.partType, externalFeatures.partType],
+      ['style', itemFeatures.style, externalFeatures.style],
+      ['color', itemFeatures.color, externalFeatures.color],
+      ['material', itemFeatures.material, externalFeatures.material],
+    ] as const;
+
+    for (const [key, itemValue, externalValue] of checks) {
+      const itemText = this.normalizeComparableValue(itemValue);
+      const externalText = this.normalizeComparableValue(externalValue);
+      if (!itemText || !externalText) continue;
+      const result = this.compareFeatureValues(itemValue, externalValue, key);
+      if (!result.ok) {
+        const reason = result.reason || `${key} mismatch`;
+        if (['style', 'color', 'material', 'part type'].includes(key)) {
+          softMismatches.push(reason);
+        } else {
+          hardMismatches.push(reason);
+        }
+      }
+    }
+
+    const itemFitRange = this.normalizeComparableValue(itemFeatures.fitmentRange || '');
+    const externalFitRange = this.normalizeComparableValue(externalFeatures.fitmentRange || '');
+    if (itemFitRange && externalFitRange) {
+      const fitmentCheck = this.compareFeatureValues(itemFeatures.fitmentRange, externalFeatures.fitmentRange, 'fitment range');
+      if (!fitmentCheck.ok) {
+        const reason = fitmentCheck.reason || 'year/fitment range mismatch';
+        hardMismatches.push(reason);
+      }
+    }
+
+    if (hardMismatches.length) {
+      mismatches.push(...hardMismatches, ...softMismatches);
+      return {
+        verdict: 'NOT FIT',
+        mismatches,
+        hardMismatches,
+        softMismatches,
+      };
+    }
+
+    if (softMismatches.length) {
+      mismatches.push(...softMismatches);
+      return {
+        verdict: 'REVIEW',
+        mismatches,
+        hardMismatches,
+        softMismatches,
+      };
+    }
+
+    return {
+      verdict: 'FIT',
+      mismatches: [],
+      hardMismatches: [],
+      softMismatches: [],
+    };
+  }
+
   private async ikonBin(): Promise<{ file: string }> {
     const sql = `
       SELECT *

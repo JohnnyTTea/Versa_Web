@@ -7,7 +7,9 @@ type ActionKey =
   | "Other Charge Remove(IKON)"
   | "Other Charge Remove(MD)"
   | "Sales Order Tax Update (IKON)"
-  | "Sales Order Tax Update (MD)";
+  | "Sales Order Tax Update (MD)"
+  | "Inventory Update (IKON)"
+  | "Inventory Update (MD)";
 
 type SalesOrderTaxRow = {
   order_id: string;
@@ -36,6 +38,36 @@ type SalesOrderTaxResult = {
   unmatched: SalesOrderTaxUnmatchedRow[];
   company: "IKON" | "MD";
   schema: "aisdata1" | "aisdata3";
+  error?: string;
+  message?: string;
+};
+
+type BinQtyRow = {
+  itemno: string;
+  bin: string;
+  source_rows: number;
+  qty: number;
+  old_qty: number;
+  new_qty: number;
+  whse: string[];
+};
+
+type BinQtyUnmatchedRow = {
+  itemno: string;
+  bin: string;
+  source_rows: number;
+  qty: number;
+  reason: string;
+};
+
+type BinQtyResult = {
+  success: boolean;
+  updated: boolean;
+  affected_rows: number;
+  matched: BinQtyRow[];
+  unmatched: BinQtyUnmatchedRow[];
+  company: "IKON" | "MD";
+  schema: "aisdata0" | "aisdata3";
   error?: string;
   message?: string;
 };
@@ -93,6 +125,10 @@ const DESCRIPTIONS: Record<string, string> = {
     "上传订单税额 Excel，按 order-id 匹配 IKON AIS 的 Cpono；汇总 item-tax 更新 Taxamt1，并按 Totamt - 原 Taxamt1 + 新税额更新总额。",
   "Sales Order Tax Update (MD)":
     "上传订单税额 Excel，按 order-id 匹配 MD AIS 的 Cpono；汇总 item-tax 更新 Taxamt1，并按 Totamt - 原 Taxamt1 + 新税额更新总额。",
+  "Inventory Update (IKON)":
+    "上传 SKU / Bin / Qty Excel，按 SKU 和 Bin 匹配 IKON AIS（aisdata0）的 itemwhse 记录，预览后从指定 Bin 扣除 Qty，不改变 item 总 Onhand。同一天相同文件名和完整 Itemno 集合不能重复扣除。",
+  "Inventory Update (MD)":
+    "上传 SKU / Bin / Qty Excel，按 SKU 和 Bin 匹配 MD AIS（aisdata3）的 itemwhse 记录，预览后从指定 Bin 扣除 Qty，不改变 item 总 Onhand。同一天相同文件名和完整 Itemno 集合不能重复扣除。",
 };
 
 type SortKey =
@@ -113,6 +149,17 @@ export default function ModifyPage() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [salesOrderResult, setSalesOrderResult] = useState<SalesOrderTaxResult | null>(null);
+  const [binQtyResult, setBinQtyResult] = useState<BinQtyResult | null>(null);
+  const [binPage, setBinPage] = useState(1);
+  const binPageSize = 50;
+  const binRows = [
+    ...(binQtyResult?.matched ?? []).map((row) => ({ kind: "matched" as const, row })),
+    ...(binQtyResult?.unmatched ?? []).map((row) => ({ kind: "skipped" as const, row })),
+  ];
+  const binTotalPages = Math.max(1, Math.ceil(binRows.length / binPageSize));
+  const binPageClamped = Math.min(binPage, binTotalPages);
+  const binStart = (binPageClamped - 1) * binPageSize;
+  const binPageRows = binRows.slice(binStart, binStart + binPageSize);
 
   // 右侧展示
   const [statusText, setStatusText] = useState<string>("Waiting for user action...");
@@ -144,12 +191,15 @@ export default function ModifyPage() {
     setPreviewFile(null);
     setUploadedFile(null);
     setSalesOrderResult(null);
+    setBinQtyResult(null);
+    setBinPage(1);
     setPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAction]);
 
   const description = DESCRIPTIONS[selectedAction] || "暂无描述。";
   const isSalesOrderTaxAction = selectedAction.startsWith("Sales Order Tax Update");
+  const isBinQtyAction = selectedAction.startsWith("Inventory Update");
   const salesOrderCompany = selectedAction.endsWith("(MD)") ? "MD" : "IKON";
 
   const sortedChanges = useMemo(() => {
@@ -277,11 +327,15 @@ export default function ModifyPage() {
     if (!isAllowed) {
       setUploadedFile(null);
       setSalesOrderResult(null);
+      setBinQtyResult(null);
+      setBinPage(1);
       setStatusText("❌ 请选择 .xlsx/.xls/.csv/.tsv/.txt 格式的文件。");
       return;
     }
     setUploadedFile(file);
     setSalesOrderResult(null);
+    setBinQtyResult(null);
+    setBinPage(1);
     setStatusText(`已选择文件：${file.name}`);
   }
 
@@ -400,6 +454,108 @@ export default function ModifyPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function processBinQty(write: boolean) {
+    if (!uploadedFile) {
+      setStatusText("❌ 请先选择或拖入 .xlsx 文件。");
+      return;
+    }
+    if (write && !binQtyResult) {
+      setStatusText("❌ 请先预览文件，再确认写入。");
+      return;
+    }
+    if (
+      write &&
+      !window.confirm(
+        `确认更新 ${salesOrderCompany} AIS 中预览匹配的 ${binQtyResult?.matched.length ?? 0} 个 Bin 的库存（扣除文件 Qty，不改变总 Onhand；库存不足或未匹配记录将跳过）？`,
+      )
+    ) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", uploadedFile);
+    formData.append("company", salesOrderCompany);
+    if (write && binQtyResult) {
+      formData.append("expected", JSON.stringify(binQtyResult.matched));
+    }
+
+    trackUserEvent({
+      event: `Bin Qty ${write ? "execute" : "preview"} (${salesOrderCompany}) ${uploadedFile.name}`,
+      module: "modify",
+      action: write ? "execute" : "dry_run",
+      target: `Bin Qty Update (${salesOrderCompany})`,
+    });
+
+    setStatusText(write ? "⏳ 正在核对预览并更新 AIS Inventory..." : "⏳ 正在读取文件并匹配 AIS Inventory...");
+    if (!write) setBinQtyResult(null);
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/modify/bin-qty/${write ? "execute" : "preview"}`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      const data = (await res.json()) as BinQtyResult;
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || data?.error || `请求失败（HTTP ${res.status}）`);
+      }
+      setBinQtyResult(data);
+      setBinPage(1);
+      setStatusText(
+        write
+          ? `✅ 已更新 ${data.matched.length} 个 Inventory 记录；跳过 ${data.unmatched.length} 条。`
+          : `✅ 预览完成：匹配 ${data.matched.length} 个 Inventory 记录，跳过 ${data.unmatched.length} 条。库存不足或未匹配记录将跳过。`,
+      );
+    } catch (error) {
+      setStatusText(`❌ ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function downloadBinQtyResult() {
+    if (!binQtyResult) return;
+    const columns = ["status", "itemno", "bin", "whse", "source rows", "file qty", "old qty", "new qty", "message"];
+    const quote = (value: unknown) => {
+      let text = String(value ?? "");
+      if (typeof value === "string" && /^[\t\r ]*[=+\-@]/.test(text)) {
+        text = `'${text}`;
+      }
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const matchedRows = binQtyResult.matched.map((row) => [
+      binQtyResult.updated ? "updated" : "matched",
+      row.itemno,
+      row.bin,
+      row.whse.join(" / "),
+      row.source_rows,
+      row.qty,
+      row.old_qty,
+      row.new_qty,
+      "",
+    ]);
+    const unmatchedRows = binQtyResult.unmatched.map((row) => [
+      "unmatched",
+      row.itemno,
+      row.bin,
+      "",
+      row.source_rows,
+      row.qty,
+      "",
+      "",
+      row.reason,
+    ]);
+    const csv = [columns, ...matchedRows, ...unmatchedRows]
+      .map((row) => row.map(quote).join(","))
+      .join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `AIS-${salesOrderCompany}-bin-qty-result.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   function onClickHeader(k: SortKey) {
     // 与 PHP：点击同列切换 asc/desc；切换列默认 trdate desc，其它 asc
     if (sortKey === k) {
@@ -434,7 +590,7 @@ export default function ModifyPage() {
 
           <select
             className="report-list"
-            size={6}
+            size={8}
             value={selectedAction}
             onChange={(e) => setSelectedAction(e.target.value as ActionKey)}
           >
@@ -442,9 +598,11 @@ export default function ModifyPage() {
             <option>Other Charge Remove(MD)</option>
             <option>Sales Order Tax Update (IKON)</option>
             <option>Sales Order Tax Update (MD)</option>
+            <option>Inventory Update (IKON)</option>
+            <option>Inventory Update (MD)</option>
           </select>
 
-          {isSalesOrderTaxAction ? (
+          {isSalesOrderTaxAction || isBinQtyAction ? (
             <div className="report-export-bar sales-order-upload">
               <label
                 className={`sales-order-dropzone${isDragOver ? " is-drag-over" : ""}`}
@@ -479,24 +637,29 @@ export default function ModifyPage() {
                   onClick={() => {
                     setUploadedFile(null);
                     setSalesOrderResult(null);
+                    setBinQtyResult(null);
+                    setBinPage(1);
                     setStatusText("已移除文件。");
                   }}
                 >
                   移除文件
                 </button>
               ) : null}
-              <button disabled={loading || !uploadedFile} onClick={() => processSalesOrderTax(false)}>
-                预览匹配及金额（不改库）
+              <button
+                disabled={loading || !uploadedFile}
+                onClick={() => (isSalesOrderTaxAction ? processSalesOrderTax(false) : processBinQty(false))}
+              >
+                {isSalesOrderTaxAction ? "预览匹配及金额（不改库）" : "预览 Inventory 匹配结果（不改库）"}
               </button>
               <button
-                disabled={loading || !uploadedFile || !salesOrderResult?.matched.length}
+                disabled={loading || !uploadedFile || !(isSalesOrderTaxAction ? salesOrderResult?.matched.length : binQtyResult?.matched.length)}
                 className="danger"
-                onClick={() => processSalesOrderTax(true)}
+                onClick={() => (isSalesOrderTaxAction ? processSalesOrderTax(true) : processBinQty(true))}
               >
-                确认并写入 AIS
+                {isSalesOrderTaxAction ? "确认并写入 AIS" : "确认更新 Inventory"}
               </button>
-              {salesOrderResult ? (
-                <button disabled={loading} onClick={downloadSalesOrderResult}>
+              {(isSalesOrderTaxAction ? salesOrderResult : binQtyResult) ? (
+                <button disabled={loading} onClick={isSalesOrderTaxAction ? downloadSalesOrderResult : downloadBinQtyResult}>
                   下载处理结果（CSV）
                 </button>
               ) : null}
@@ -535,7 +698,13 @@ export default function ModifyPage() {
           <h3>📦 Target Status</h3>
           <div className="status-box">{statusText}</div>
 
-          <h3>{isSalesOrderTaxAction ? "🧾 Sales Order Tax Results" : "🧾 Changed Invoices"}</h3>
+          <h3>
+            {isSalesOrderTaxAction
+              ? "🧾 Sales Order Tax Results"
+              : isBinQtyAction
+                ? "📦 Inventory Update Results"
+                : "🧾 Changed Invoices"}
+          </h3>
 
           <div className="change-list">
             {isSalesOrderTaxAction ? (
@@ -591,6 +760,58 @@ export default function ModifyPage() {
                 </>
               ) : (
                 <div className="no-data">请上传 Excel 并预览匹配结果。</div>
+              )
+            ) : isBinQtyAction ? (
+              binQtyResult ? (
+                <>
+                  <div className="sales-order-result-summary">
+                    {binQtyResult.updated ? "已更新" : "预览匹配"} {binQtyResult.matched.length} 个 Inventory 记录；
+                    跳过 {binQtyResult.unmatched.length} 条（库存不足或未匹配），仅扣除有效记录。
+                  </div>
+                  <div className="chg-table-wrap">
+                    <table className="chg-table sales-order-result-table">
+                      <thead>
+                        <tr>
+                          <th>Index</th>
+                          <th>状态</th>
+                          <th>Itemno / Bin</th>
+                          <th>文件行数</th>
+                          <th>扣除 Qty</th>
+                          <th>Onhand（前 → 后）</th>
+                          <th>Warehouse</th>
+                          <th>结果</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {binPageRows.map((entry, index) => {
+                          const row = entry.row;
+                          const matched = entry.kind === "matched" ? entry.row : null;
+                          return (
+                            <tr key={JSON.stringify([entry.kind, row.itemno, row.bin])}>
+                              <td className="pad ta-center">{binStart + index + 1}</td>
+                              <td className="pad ta-center">{matched ? (binQtyResult.updated ? "已扣除" : "待确认") : "跳过"}</td>
+                              <td className="pad ta-left">{row.itemno}<br />{row.bin}</td>
+                              <td className="pad ta-center">{row.source_rows}</td>
+                              <td className="pad ta-right">{row.qty}</td>
+                              <td className="pad ta-right">{matched ? `${matched.old_qty} → ${matched.new_qty}` : "—"}</td>
+                              <td className="pad ta-left">{matched ? matched.whse.join(" / ") : "—"}</td>
+                              <td className="pad ta-left">{entry.kind === "skipped" ? entry.row.reason : "匹配成功"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pager">
+                    <button className="pager-btn" disabled={binPageClamped === 1} onClick={() => setBinPage(1)}>« 首页</button>
+                    <button className="pager-btn" disabled={binPageClamped === 1} onClick={() => setBinPage(binPageClamped - 1)}>‹ 上一页</button>
+                    <span className="pager-info">第 {binPageClamped}/{binTotalPages} 页 · 每页 50 条 · 显示 {binRows.length ? binStart + 1 : 0}-{Math.min(binStart + binPageSize, binRows.length)} / 共 {binRows.length} 条</span>
+                    <button className="pager-btn" disabled={binPageClamped === binTotalPages} onClick={() => setBinPage(binPageClamped + 1)}>下一页 ›</button>
+                    <button className="pager-btn" disabled={binPageClamped === binTotalPages} onClick={() => setBinPage(binTotalPages)}>末页 »</button>
+                  </div>
+                </>
+              ) : (
+                <div className="no-data">请上传 Excel 并预览 Inventory 匹配结果。</div>
               )
             ) : (
               <>

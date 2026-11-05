@@ -55,6 +55,7 @@ export const moduleMenus: Record<ModuleKey, SidebarItem[]> = {
   report: [
     { label: "Report", to: "/report", end: true },
     { label: "Data Report", to: "/report/data" },
+    { label: "SKU Fitment", to: "/report/sku-fitment" },
     { label: "Database", to: "/report/database" },
   ],
   //inventory control

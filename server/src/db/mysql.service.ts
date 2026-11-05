@@ -138,6 +138,34 @@ export class MysqlService implements OnModuleDestroy {
     }
   }
 
+  async withBinInventoryLock<T>(schema: SchemaName, work: (connection: MysqlTransaction) => Promise<T>): Promise<T> {
+    const connection = await this.getPool(schema).getConnection();
+    let locked = false;
+    try {
+      // Legacy itemwhse uses MyISAM: transactions/FOR UPDATE cannot protect it.
+      await connection.query('LOCK TABLES itemwhse WRITE, modify_bin_qty_daily_audit WRITE');
+      locked = true;
+      return await work({
+        query: async <R = any>(sql: string, params?: any) => {
+          const [rows] = await connection.query(sql, params);
+          return rows as R[];
+        },
+        execute: async (sql: string, params?: any) => {
+          const [result] = await connection.execute(sql, params);
+          return { affectedRows: Number((result as mysql.ResultSetHeader).affectedRows || 0) };
+        },
+      });
+    } finally {
+      try {
+        if (locked) await connection.query('UNLOCK TABLES');
+        connection.release();
+      } catch (error) {
+        connection.destroy();
+        throw error;
+      }
+    }
+  }
+
   async onModuleDestroy() {
     for (const pool of Object.values(this.pools)) {
       await pool.end();

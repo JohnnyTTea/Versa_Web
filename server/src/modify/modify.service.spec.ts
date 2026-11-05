@@ -10,6 +10,14 @@ async function makeWorkbook(rows: Array<[string, number]>): Promise<Buffer> {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
+async function makeBinQtyWorkbook(rows: Array<[string, string, number, string, number]>): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Bins');
+  sheet.addRow(['SKUs', 'Bin 1', 'QTY 1', 'Bin 2', 'QTY 2']);
+  rows.forEach((row) => sheet.addRow(row));
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
 function makeDelimitedFile(rows: Array<[string, number]>, delimiter = '\t'): Buffer {
   const lines = [['order-id', 'item-tax'], ...rows].map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(delimiter));
   return Buffer.from(lines.join('\n'), 'utf8');
@@ -188,5 +196,76 @@ describe('ModifyService sales order tax updates', () => {
       service.executeSalesOrderTax(file, 'IKON', preview.matched),
     ).rejects.toThrow('订单匹配结果已变化');
     expect(transactionExecute).not.toHaveBeenCalled();
+  });
+
+  it('previews and updates item bin qty by sku and bin', async () => {
+    const query = jest.fn(async (schema: string, sql: string) => {
+      if (sql.includes('CREATE TABLE IF NOT EXISTS modify_bin_qty_daily_audit')) {
+        return [];
+      }
+      if (sql.includes('SELECT identity_hash FROM modify_bin_qty_daily_audit')) {
+        return [];
+      }
+      if (sql.includes('SELECT Itemno FROM item')) {
+        return [{ Itemno: 'SKU-001' }];
+      }
+      if (sql.includes('SELECT Whse, Bin, Onhand FROM itemwhse')) {
+        return [{ Whse: '1', Bin: 'A12K3X', Onhand: 10 }];
+      }
+      return [];
+    });
+    const execute = jest.fn(async (schema: string, sql: string) => {
+      if (sql.includes('INSERT INTO modify_bin_qty_daily_audit')) {
+        return { affectedRows: 1 };
+      }
+      return { affectedRows: 1 };
+    });
+    const transactionQuery = jest.fn(async (sql: string) => {
+      if (sql.includes('SELECT Whse, Bin, Onhand FROM itemwhse')) {
+        return [{ Whse: '1', Bin: 'A12K3X', Onhand: 10 }];
+      }
+      return [];
+    });
+    const transactionExecute = jest.fn().mockResolvedValue({ affectedRows: 1 });
+    const transaction: MysqlTransaction = { query: transactionQuery, execute: transactionExecute };
+    const withTransaction = jest.fn((_schema: string, callback: (tx: MysqlTransaction) => Promise<unknown>) => callback(transaction));
+    const db = { query, execute, withBinInventoryLock: withTransaction };
+    const service = new ModifyService(db as unknown as MysqlService);
+    const file = await makeBinQtyWorkbook([
+      ['SKU-001', 'A12K3X', 1, '', 0],
+      ['SKU-001', '', 0, 'A99X', 4],
+    ]);
+
+    const preview = await service.previewBinQty(file, 'IKON', 'inventory.xlsx');
+    expect(preview.matched).toEqual([
+      expect.objectContaining({ itemno: 'SKU-001', bin: 'A12K3X', old_qty: 10, new_qty: 9 }),
+      expect.objectContaining({ itemno: 'SKU-001', bin: 'A99X', new_qty: 6 }),
+    ]);
+
+    const result = await service.executeBinQty(file, 'IKON', preview.matched, 'inventory.xlsx');
+    expect(withTransaction).toHaveBeenCalledWith('aisdata0', expect.any(Function));
+    expect(transactionExecute).toHaveBeenCalledWith(
+      'UPDATE itemwhse SET Onhand = Onhand - ? WHERE Itemno = ? AND Whse = ? AND Bin = ? AND Onhand >= ?',
+      [1, 'SKU-001', '1', 'A12K3X', 1],
+    );
+    expect(transactionExecute).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO modify_bin_qty_daily_audit'),
+      expect.any(Array),
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.updated).toBe(true);
+  });
+
+  it('rejects reusing a processed bin qty file', async () => {
+    const query = jest.fn(async (schema: string, sql: string) => {
+      if (sql.includes('CREATE TABLE IF NOT EXISTS modify_bin_qty_daily_audit')) return [];
+      if (sql.includes('SELECT identity_hash FROM modify_bin_qty_daily_audit')) return [{ file_hash: 'existing-hash' }];
+      return [];
+    });
+    const db = { query, execute: jest.fn(), withTransaction: jest.fn() };
+    const service = new ModifyService(db as unknown as MysqlService);
+    const file = await makeBinQtyWorkbook([['SKU-001', 'A12K3X', 1, '', 0]]);
+
+    await expect(service.previewBinQty(file, 'IKON', 'inventory.xlsx')).rejects.toThrow('今天已经扣过库存');
   });
 });
