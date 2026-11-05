@@ -773,21 +773,23 @@ export default function ModifyPage() {
             ) : isBinQtyAction ? (
               binQtyResult ? (
                 <>
-                  <div className="sales-order-result-summary">
-                    {binQtyResult.updated ? "已更新" : "预览匹配"} {binQtyResult.matched.length} 个 Inventory 记录；
-                    {binQtyResult.updated ? "未更新" : "将跳过"} {binQtyResult.unmatched.length} 条，仅扣除有效记录。
-                    {binQtyResult.unmatched.length > 0 && (
-                      <p role="status">
-                        ⚠ {binQtyResult.updated ? "以下记录未更新库存" : "以下记录将不参与更新"}：库存不足 {shortageCount} 条，
-                        未匹配或其他原因 {binQtyResult.unmatched.length - shortageCount} 条。可筛选查看具体原因，或下载未更新清单。
-                      </p>
-                    )}
-                  </div>
-                  <div className="report-export-bar" aria-label="Inventory results filters">
-                    <button aria-pressed={binFilter === "all"} onClick={() => { setBinFilter("all"); setBinPage(1); }}>全部（{allBinRows.length}）</button>
-                    <button aria-pressed={binFilter === "skipped"} onClick={() => { setBinFilter("skipped"); setBinPage(1); }}>仅未更新（{binQtyResult.unmatched.length}）</button>
-                    <button aria-pressed={binFilter === "shortage"} onClick={() => { setBinFilter("shortage"); setBinPage(1); }}>仅库存不足（{shortageCount}）</button>
-                    <button disabled={loading || !binQtyResult.unmatched.length} onClick={() => downloadBinQtyResult(true)}>下载未更新记录（CSV）</button>
+                  <div className="inventory-result-toolbar">
+                    <div className="sales-order-result-summary inventory-result-summary">
+                      {binQtyResult.updated ? "已更新" : "预览匹配"} {binQtyResult.matched.length} 个 Inventory 记录；
+                      {binQtyResult.updated ? "未更新" : "将跳过"} {binQtyResult.unmatched.length} 条，仅扣除有效记录。
+                      {binQtyResult.unmatched.length > 0 && (
+                        <p role="status">
+                          ⚠ {binQtyResult.updated ? "以下记录未更新库存" : "以下记录将不参与更新"}：库存不足 {shortageCount} 条，
+                          未匹配或其他原因 {binQtyResult.unmatched.length - shortageCount} 条。可筛选查看具体原因，或下载未更新清单。
+                        </p>
+                      )}
+                    </div>
+                    <div className="inventory-result-actions" aria-label="Inventory results filters">
+                      <button aria-pressed={binFilter === "all"} onClick={() => { setBinFilter("all"); setBinPage(1); }}>全部（{allBinRows.length}）</button>
+                      <button aria-pressed={binFilter === "skipped"} onClick={() => { setBinFilter("skipped"); setBinPage(1); }}>未更新（{binQtyResult.unmatched.length}）</button>
+                      <button aria-pressed={binFilter === "shortage"} onClick={() => { setBinFilter("shortage"); setBinPage(1); }}>库存不足（{shortageCount}）</button>
+                      <button disabled={loading || !binQtyResult.unmatched.length} onClick={() => downloadBinQtyResult(true)} className="inventory-download" title="下载全部未更新记录（CSV）">下载未更新 CSV</button>
+                    </div>
                   </div>
                   <div className="chg-table-wrap">
                     <table className="chg-table sales-order-result-table">
