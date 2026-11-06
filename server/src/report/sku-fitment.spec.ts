@@ -1,4 +1,4 @@
-import { extractProductFeatures as features, parseProductPage, compareProductFeatures as compare, emptyEvidence } from './sku-fitment';
+import { extractProductFeatures as features, extractLocalSkuFeatures as local, extractReferenceFeatures, parseProductPage, compareProductFeatures as compare, emptyEvidence } from './sku-fitment';
 import { fetchProductEvidence } from './sku-fitment-fetch';
 import { ReportService } from './report.service';
 
@@ -40,7 +40,7 @@ describe('SKU comparison evidence regression', () => {
     const a = features('2005-2008 BMW E90 Sedan front lip black PU');
     const b = features('2006-2013 BMW E90 E92 Sedan Coupe front lip black PU');
     const result = compare(a, b);
-    expect(result.dimensions.find(d => d.field === 'fitment')?.status).toBe('partial');
+    expect(result.dimensions.find(d => d.field === 'fitmentRange')?.status).toBe('partial');
     expect(result.verdict).toBe('REVIEW');
   });
 
@@ -63,33 +63,78 @@ describe('SKU comparison evidence regression', () => {
     expect(result.verdict).toBe('REVIEW');
   });
 
-  it('separates named style, finish, material, and package quantity differences', () => {
+  it('compares only named style and color differences', () => {
     for (const [a, b, field] of [
       ['IKON V2 Style', 'IKON V3 Style', 'style'], ['matte black', 'gloss black', 'color'],
-      ['PU Polyurethane', 'PP Polypropylene', 'material'], ['set of 3', 'set of 1', 'quantity'],
     ]) {
       const result = compare(features(a), features(b));
       expect(result.dimensions.find(d => d.field === field)?.status).toBe('different');
     }
   });
 
-  it('does not infer physically different shapes from style names alone', () => {
+  it('compares explicit named styles without requiring image confirmation', () => {
     const result = compare(features('2001-2005 Lexus IS300 front lip AMS Style'), features('2001-2005 Lexus IS300 front lip CS Style'));
     expect(result.dimensions.find(d => d.field === 'style')?.status).toBe('different');
-    expect(result.verdict).toBe('REVIEW');
-    expect(result.reason).toContain('结合图片');
+    expect(result.verdict).toBe('NOT FIT');
+    expect(result.reason).not.toContain('图片');
   });
 
   it('does not invent a shape mismatch from rear lip versus diffuser wording', () => {
     const result = compare(features('2022-2026 Honda Civic rear lip'), features('2022-2026 Honda Civic rear diffuser'));
-    expect(result.dimensions.find(d => d.field === 'partType')?.status).toBe('unknown');
+    expect(result.dimensions.map(d => d.field)).toEqual(['fitmentRange', 'model', 'color', 'style']);
     expect(result.verdict).toBe('REVIEW');
   });
 
   it('preserves open-ended years and named style abbreviations', () => {
     expect(features('2021-UP Hyundai Elantra front lip').fitmentRange).toBe('2021+');
     expect(features('IKON V3 Sty gloss black').style).toBe('ikon v3');
-    expect(compare(features('2021-UP Hyundai Elantra front lip'), features('2021-2026 Hyundai Elantra front lip')).dimensions.find(d => d.field === 'fitment')?.status).toBe('partial');
+    expect(compare(features('2021-UP Hyundai Elantra front lip'), features('2021-2026 Hyundai Elantra front lip')).dimensions.find(d => d.field === 'fitmentRange')?.status).toBe('partial');
+  });
+
+  it('ignores differences outside the four configured fields', () => {
+    const a = { ...features(ours), make: 'brand-a', material: 'pu', quantity: '1', partType: 'lip' };
+    const b = { ...features(ours), make: 'brand-b', material: 'abs', quantity: '3', partType: 'diffuser' };
+    expect(compare(a, b).verdict).toBe('FIT');
+  });
+
+  it('accepts overlapping years but rejects a known mismatch', () => {
+    expect(compare(features(ours), features(ours.replace('2001-2005', '2003-2008'))).verdict).toBe('FIT');
+    expect(compare(features(ours), features(ours.replace('2001-2005', '2010-2015'))).verdict).toBe('NOT FIT');
+  });
+
+  it('supplements descriptions using known SKU color and style codes', () => {
+    const result = local('BLF-HA184IKV33P-GBK', '18-20 Honda Accord front lip', '');
+    expect(result).toMatchObject({ color: 'gloss black', style: 'ikon v3', fitmentRange: '2018-2020', model: 'accord' });
+    expect(result.sources?.color).toContain('GBK');
+    expect(local('BLF-SBRZ13CS-PU', '13-16 Subaru BRZ front lip', '').style).toBe('cs');
+    expect(local('BLF-TCL204IK-CFL', '20-25 Toyota Corolla spoiler', '').color).toBe('carbon fiber look');
+    expect(local('UNKNOWN-123-ZZZ', '', '').color).toBe('');
+    expect(local('UNKNOWN-HC01-PU', '', '').fitmentRange).toBe('');
+  });
+
+  it('retains known source conflicts instead of silently inventing a match', () => {
+    const result = local('BLF-HA184IK-GBK', '2018-2020 Honda Accord red IKON Style', '');
+    expect(result.conflicts).toHaveLength(1);
+    expect(compare(result, features('2018-2020 Honda Accord red IKON Style')).verdict).toBe('REVIEW');
+  });
+
+  it('reads labeled style values and separates HTML spec labels from values', () => {
+    expect(features('Style: IKON V2').style).toBe('ikon v2');
+    const page = parseProductPage(`${product(ours)}<div class="ux-labels-values"><span>Style</span><span>CS</span></div>`, url);
+    expect(page.text).toContain('Style CS');
+  });
+
+  it('does not misread the generic word Models as Tesla Model S', () => {
+    expect(features('Fits all models').model).toBe('');
+    expect(features('Tesla Model S').model).toBe('models');
+    expect(features('Tesla Model3').model).toBe('model3');
+  });
+
+  it('uses the concrete title color rather than generic descriptive prose', () => {
+    const page = parseProductPage(`${product('20-25 Tesla Model Y, CFL, IKON Style')}<div id="feature-bullets"><li>Black mounting brackets</li></div>`, url);
+    expect(extractReferenceFeatures(page).color).toBe('carbon fiber look');
+    expect(extractReferenceFeatures(page).style).toBe('ikon');
+    expect(features('Hyundai Elantra Blue Hybrid, Gloss Black').color).toBe('gloss black');
   });
 
   it('recognizes JSON-LD Product but ignores recommended ItemList products', () => {
@@ -120,10 +165,10 @@ describe('SKU comparison evidence regression', () => {
     expect(compare(features(ours), features('2001-2005 Lexus IS300 front lip red PP'), page).verdict).toBe('REVIEW');
   });
 
-  it('never claims that matching text proves identical physical shape', () => {
+  it('passes four matching fields without considering brand, images or material', () => {
     const result = compare(features(ours), features(ours));
-    expect(result.verdict).toBe('REVIEW');
-    expect(result.dimensions.find(d => d.field === 'visual')?.status).toBe('unknown');
+    expect(result.verdict).toBe('FIT');
+    expect(result.dimensions).toHaveLength(4);
     expect(result.confidence).toBe('not_calibrated');
   });
 });

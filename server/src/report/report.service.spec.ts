@@ -146,7 +146,7 @@ describe('ReportService.date-range optimization', () => {
   it('keeps missing metadata unknown while recognizing material aliases', () => {
     const service = new ReportService({} as any);
 
-    expect(compareProductFeatures({ material: 'PP' }, { material: 'polypropylene' }).dimensions.find(d => d.field === 'material')?.status).toBe('same');
+    expect(compareProductFeatures({ material: 'PP' }, { material: 'polypropylene' }).dimensions.some(d => d.field === 'material')).toBe(false);
     const fit = compareProductFeatures(
       { make: '', model: '', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'urethane', fitmentRange: '01-05' },
       { make: 'lexus', model: 'is300', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'pu', fitmentRange: '2001-2005' },
@@ -164,6 +164,6 @@ describe('ReportService.date-range optimization', () => {
     );
 
     expect(review.verdict).toBe('NOT FIT');
-    expect(review.mismatches).toEqual(expect.arrayContaining(['style: ams ≠ cs', 'material: pu ≠ pp']));
+    expect(review.mismatches).toEqual(expect.arrayContaining(['style: ams ≠ cs']));
   });
 });

@@ -1,12 +1,13 @@
 import { load } from 'cheerio';
 
-export const FITMENT_VERSION = 'rules-v2-evidence';
+export const FITMENT_VERSION = 'rules-v3-four-fields';
 export type CheckStatus = 'same' | 'different' | 'partial' | 'unknown';
 export type FeatureSet = {
   text: string; make: string; model: string; partType: string; style: string;
   color: string; material: string; fitmentRange: string; chassis: string;
   body: string; trim: string; exclusions: string; universal: boolean;
   dimensions: string; quantity: string;
+  sources?: Record<string, string>; conflicts?: string[];
 };
 export type DimensionCheck = { field: string; status: CheckStatus; internal: string; external: string; reason: string };
 export type PageEvidence = {
@@ -27,7 +28,7 @@ export function extractProductFeatures(input: string): FeatureSet {
   const text = tidy(input).toLowerCase().replace(/[–—]/g, '-').replace(/\btesl\b/g, 'tesla').replace(/\bdodg\b/g, 'dodge');
   const makes: Record<string, string> = { chevy: 'chevrolet', 'mercedes-benz': 'mercedes', vw: 'volkswagen' };
   const make = listed((text.match(/\b(?:lexus|bmw|honda|subaru|toyota|audi|nissan|ford|mercedes(?:-benz)?|volkswagen|vw|acura|mazda|tesla|mini|jaguar|cadillac|chrysler|porsche|hyundai|kia|mitsubishi|volvo|chevrolet|chevy|gmc|dodge|infiniti|scion)\b/g) || []).map(v => makes[v] || v));
-  const model = listed((text.match(/\b(?:is\s?(?:250|300|350|500)|q\s?50|q\s?60|g\s?35|g\s?37|mdx|suburban|tahoe|camry|corolla|rav-?4|mr-?2|highlander|tacoma|grand highlander|civic|accord|cr-?v|hr-?v|ridgeline|pilot|integra|prelude|brz|fr-?s|wrx|impreza|lancer|genesis|elantra|ioniq\s?5|k5|charger|challenger|durango|mustang|explorer|camaro|corvette|silverado|sierra|jetta|golf|model\s?[3syx]|ct[45]|tx\s?(?:350|500h|550h)|350z|370z|x[156]|[1357][ -]series|sl-class|e-class|scion\s+(?:tc|xb)|toyota\s+86)\b/g) || []).map(v => v.replace(/[-\s]/g, '').replace(/^(?:scion|toyota)/, '')));
+  const model = listed((text.match(/\b(?:is\s?(?:250|300|350|500)|q\s?50|q\s?60|g\s?35|g\s?37|mdx|suburban|tahoe|yaris|camry|corolla|rav-?4|mr-?2|highlander|tacoma|grand highlander|civic|accord|cr-?v|hr-?v|ridgeline|pilot|integra|prelude|brz|fr-?s|wrx|impreza|lancer|genesis|elantra|ioniq\s?5|k5|charger|challenger|durango|mustang|explorer|camaro|corvette|silverado|sierra|jetta|golf|model(?:\s+[syx]|\s*3)|ct[45]|tx\s?(?:350|500h|550h)|350z|370z|x[156]|[1357][ -]series|sl-class|e-class|scion\s+(?:tc|xb)|toyota\s+86)\b/g) || []).map(v => v.replace(/[-\s]/g, '').replace(/^(?:scion|toyota)/, '')));
   const exclusions = listed((text.match(/(?:not\s+(?:fit|fits|for)|except|excluding|excludes|will not fit)\s+[^.;,]+/g) || []).map(tidy));
   const positive = text.replace(/(?:not\s+(?:fit|fits|for)|except|excluding|excludes|will not fit)\s+[^.;,]+/g, ' ');
   const chassis = listed(positive.match(/\b(?:e\d{2}|f\d{2}|g\d{2}|w\d{3}|r\d{3}|mk\s?(?:iv|vi?|[4-8]))\b/g) || []);
@@ -52,10 +53,14 @@ export function extractProductFeatures(input: string): FeatureSet {
     [/\broof rack\b/, 'roof rack'], [/\bmirror covers?\b/, 'mirror cover'],
     [/\bhood\b/, 'hood'], [/\bvalance\b/, 'valance'], [/\bfront bumper\b/, 'front bumper'],
   ];
-  const style = listed([...text.matchAll(/\b(ikon(?:\s+v\d+)?|oem?|factory|ams|ap|u1|cs|tr|type[ -]r|jdm(?:\s+mugen|\s+sir)?|mugen|rocker|gt500|gli|20ae|vr|gr|fm|ctr|rs|hpd|trd|lp|ik6|[acer]|v\d+)\s+(?:style|sty)\b/g)].map(m => m[1].replace(/type-r/, 'type r')));
+  const styleBefore = [...text.matchAll(/\b(ikon(?:\s+v\d+)?|oem?|factory|ams|ap|u1|cs|tr|type[ -]r|t-r|jdm(?:\s+mugen|\s+sir)?|mugen|rocker|gt500|gli|20ae|vr|gr|fm|ctr|rs|hpd|trd|lp|ik6|[acer]|v\d+)\s+(?:style|sty)\b/g)].map(m => m[1].replace(/type-r/, 'type r'));
+  const styleAfter = [...text.matchAll(/\b(?:style|sty)\s*:?\s*(ikon(?:\s+v\d+)?|oem?|ams|cs|tr|type[ -]r|mugen|rocker|gt500|gr|fm|ctr|rs|hpd|trd|lp|ik6|m4)\b/g)].map(m => m[1]);
+  const style = listed([...styleBefore, ...styleAfter]);
   const colors: string[] = [];
   if (/\b(?:carbon (?:fiber|fibre)[ -]?(?:look|style|pattern|print)|carbon[ -]look)\b/.test(text)) colors.push('carbon fiber look');
-  for (const m of text.matchAll(/\b(?:(gloss(?:y)?|matte|flat|satin)\s+)?(black|white|red|blue|silver|gr[ae]y)\b/g)) colors.push(`${m[1] || ''} ${m[2]}`.trim().replace('glossy', 'gloss').replace('flat', 'matte').replace('grey', 'gray'));
+  for (const m of text.replace(/\bblue\s+hybrid\b/g, 'hybrid').matchAll(/\b(?:(gloss(?:y)?|matte|flat|satin)\s+)?(black|white|red|blue|silver|gr[ae]y)\b/g)) colors.push(`${m[1] || ''} ${m[2]}`.trim().replace('glossy', 'gloss').replace('flat', 'matte').replace('grey', 'gray'));
+  if (/\b(?:dark\s+)?smok(?:e|ed)\b/.test(text)) colors.push(/\bdark\s+smok/.test(text) ? 'dark smoke' : 'smoke');
+  if (/\bchrome\b/.test(text)) colors.push('chrome');
   const materials: string[] = [];
   if (/\b(?:polyurethane|urethane|pu)\b/.test(text)) materials.push('pu');
   if (/\b(?:polypropylene|pp)\b/.test(text)) materials.push('pp');
@@ -67,7 +72,7 @@ export function extractProductFeatures(input: string): FeatureSet {
   const dims = [...text.matchAll(/\b\d+(?:\.\d+)?\s*(?:x|×)\s*\d+(?:\.\d+)?(?:\s*(?:x|×)\s*\d+(?:\.\d+)?)?\s*(?:inches|inch|in\b|cm|mm)/g)].map(m => m[0]);
   const qty = [...text.matchAll(/\b(?:set\s+of\s+(\d+)|(\d+)\s*(?:pieces?|pcs?|pack))\b/g)].map(m => m[1] || m[2]);
   return { text: tidy(input), make, model, partType: types.find(([rx]) => rx.test(text))?.[1] || '', style,
-    color: listed(colors), material: listed(materials), fitmentRange: listed(intervals), chassis, body, trim, exclusions,
+    color: listed(colors.filter(v => v !== 'black' || !colors.some(c => /^(?:gloss|matte|satin) black$/.test(c)))), material: listed(materials), fitmentRange: listed(intervals), chassis, body, trim, exclusions,
     universal: /\b(?:universal|most vehicles|all vehicles)\b/.test(text), dimensions: listed(dims), quantity: listed(qty) };
 }
 
@@ -129,6 +134,7 @@ export function parseProductPage(html: string, url: string): PageEvidence {
   for (const selector of selectors) {
     const nodes = $(selector).clone();
     nodes.find('script, style, nav, aside, .a-carousel-container, [id*="recommend"], [id*="sponsored"]').remove();
+    nodes.find('td, th, dt, dd, span').append(' ');
     const text = nodes.map((_i, el) => tidy($(el).text())).get().filter(Boolean).join('\n');
     if (text) { fragments.push(text); page.sources.push(selector); }
   }
@@ -153,82 +159,135 @@ export function parseProductPage(html: string, url: string): PageEvidence {
   return page;
 }
 
-function canonical(value: unknown, field: string) {
-  const s = tidy(value).toLowerCase();
-  if (unknown(s)) return '';
-  if (field === 'material') return s.replace(/\b(?:polyurethane|urethane)\b/g, 'pu').replace(/\bpolypropylene\b/g, 'pp').replace(/\babs plastic\b/g, 'abs');
-  if (field === 'partType') return s.replace('front lip', 'front bumper lip');
-  return s;
+export function extractLocalSkuFeatures(sku: string, desc1: string, desc2: string): FeatureSet {
+  const result = extractProductFeatures(`${desc1 || ''} ${desc2 || ''}`);
+  result.sources = Object.fromEntries(['fitmentRange', 'model', 'color', 'style'].map(field => [field, result[field] ? 'Desc1 / Desc2' : '未提供']));
+  result.conflicts = [];
+  const parts = sku.toUpperCase().split('-');
+  const tail = parts.at(-1) || '';
+  const suffixColors: Record<string, string> = {
+    GBK: 'gloss black', MBK: 'matte black', MB: 'matte black', MBA: 'matte black',
+    CFL: 'carbon fiber look', CF: 'carbon fiber', MCF: 'matte carbon fiber', CH: 'chrome',
+    BK: 'black', WH: 'white', RED: 'red', BLUE: 'blue',
+  };
+  const color = suffixColors[tail];
+  if (color) {
+    if (!result.color || colorEquivalent(result.color, color)) {
+      result.color = color; result.sources.color = `SKU 尾码 ${tail}`;
+    } else {
+      result.conflicts.push(`color: SKU 尾码 ${tail} 与 Desc1/Desc2 颜色不一致`);
+    }
+  }
+  const body = parts.length >= 2 ? parts[1] : '';
+  const match = body.match(/(IK(?:V([1-9]))?|AMS|CS|TR|CTR|OE|OEM|HPD|TRD|RS|M4|GT500|GR|FM|GLI|20AE|IK6)(?:\d+P)?(?:LED)?$/);
+  if (!result.style && match) {
+    result.style = match[1] === 'IK' ? 'ikon' : match[2] ? `ikon v${match[2]}` : normalizeStyle(match[1]);
+    result.sources.style = `SKU 款式代码 ${match[1]}`;
+  }
+  // An embedded model-year code such as HC01 does not specify an end year.
+  // Only explicit ranges are used; SKU strings are never mined for arbitrary numbers.
+  if (!result.fitmentRange) {
+    const explicit = sku.match(/\b((?:19|20)\d{2})[-_]((?:19|20)\d{2})\b/);
+    if (explicit) { result.fitmentRange = `${explicit[1]}-${explicit[2]}`; result.sources.fitmentRange = 'SKU 明确年份范围'; }
+  }
+  return result;
+}
+
+export function extractReferenceFeatures(page: PageEvidence): FeatureSet {
+  if (page.status !== 'ok') return extractProductFeatures('');
+  const result = extractProductFeatures(page.text);
+  const title = extractProductFeatures(page.title);
+  const selected = extractProductFeatures(page.selectedVariant);
+  const colorCodes: Record<string, string> = { GBK: 'gloss black', MBK: 'matte black', CFL: 'carbon fiber look', MCF: 'matte carbon fiber' };
+  const codes = unique((page.title.toUpperCase().match(/\b(?:GBK|MBK|CFL|MCF)\b/g) || []).map(code => colorCodes[code]));
+  // The concrete product title/selected option takes precedence over generic
+  // specification prose, which may mention compatible finishes or other variants.
+  result.color = selected.color || (codes.length === 1 ? codes[0] : '') || title.color || result.color;
+  result.style = selected.style || title.style || result.style;
+  if (!result.style) {
+    const named = page.title.match(/(?:^|[,;])\s*(type[ -]r|t-r|ikon(?:\s+v\d+)?|oem?|ams|cs|tr|hpd|trd|m4)\s*(?:[,;]|$)/i);
+    if (named) result.style = normalizeStyle(named[1]);
+  }
+  return result;
+}
+
+function normalizeStyle(value: string) {
+  return tidy(value).toLowerCase().replace(/\b(?:style|sty)\b/g, '').trim()
+    .replace(/^(?:tr|type-r|t-r)$/, 'type r').replace(/^(?:oem|factory|oe factory)$/, 'oe')
+    .replace(/^ik(?:on)?\s*v\s*(\d+)$/, 'ikon v$1').replace(/^ik$/, 'ikon');
+}
+
+function colorEquivalent(left: string, right: string) {
+  const normalize = (v: string) => tidy(v).toLowerCase().replace(/glossy/g, 'gloss').replace(/flat/g, 'matte').replace(/grey/g, 'gray');
+  const a = normalize(left), b = normalize(right);
+  if (a === b) return true;
+  if ((a === 'black' && /^(?:gloss|matte|satin) black$/.test(b)) || (b === 'black' && /^(?:gloss|matte|satin) black$/.test(a))) return true;
+  return false;
 }
 
 export function compareProductFeatures(ours: Partial<FeatureSet>, theirs: Partial<FeatureSet>, page?: PageEvidence) {
   const dimensions: DimensionCheck[] = [];
-  for (const field of ['make', 'model', 'partType', 'style', 'color', 'material', 'dimensions', 'quantity'] as const) {
-    const internal = tidy(ours[field]), external = tidy(theirs[field]);
-    const a = canonical(internal, field), b = canonical(external, field);
-    let status: CheckStatus = !a || !b ? 'unknown' : a === b ? 'same' : 'different';
-    let reason = status === 'unknown' ? '一方或双方缺少明确资料' : status === 'same' ? '已提取字段一致' : `${internal} ≠ ${external}`;
-    if (values(a).length > 1 || values(b).length > 1) { status = 'unknown'; reason = '识别到多个候选值，需确认具体车型或变体'; }
-    if (status === 'different' && field === 'partType' && [a, b].every(v => ['rear bumper lip', 'diffuser', 'valance'].includes(v))) {
-      status = 'unknown'; reason = '后唇、扩散器等名称可能指同类部件，需核对实际结构';
-    }
-    // A generic black or plastic value is not proof of a different finish/material.
-    if (status === 'different' && ((field === 'color' && /black/.test(a) && /black/.test(b) && (a === 'black' || b === 'black')) ||
-        (field === 'material' && (a === 'plastic' || b === 'plastic')) || field === 'dimensions')) {
-      status = 'unknown'; reason = field === 'dimensions' ? '尺寸需确认单位、测量对象及产品/包装区别' : '资料精度不同，不能直接认定一致或不同';
-    }
-    dimensions.push({ field, status, internal, external, reason });
+  const fitmentDetails: DimensionCheck[] = [];
+  const field = (name: string, status: CheckStatus, internal: string, external: string, reason: string) => ({ field: name, status, internal, external, reason });
+  const aYears = values(tidy(ours.fitmentRange)).map(canonicalYears);
+  const bYears = values(tidy(theirs.fitmentRange)).map(canonicalYears);
+  let yearStatus: CheckStatus = 'unknown';
+  if (aYears.length && bYears.length && aYears.every(Boolean) && bYears.every(Boolean)) {
+    yearStatus = aYears.length === bYears.length && aYears.every((a, i) => a![0] === bYears[i]![0] && a![1] === bYears[i]![1]) ? 'same' :
+      aYears.some(a => bYears.some(b => a![0] <= b![1] && b![0] <= a![1])) ? 'partial' : 'different';
   }
-  const fitChecks: DimensionCheck[] = [];
-  const addFit = (field: string, status: CheckStatus, reason: string) => fitChecks.push({ field, status, internal: tidy(ours[field]), external: tidy(theirs[field]), reason });
-  if (ours.universal || theirs.universal) addFit('universal', 'partial', '通用型与具体车型的适配关系需人工确认');
-  const aRanges = values(tidy(ours.fitmentRange)).map(v => canonicalYears(v));
-  const bRanges = values(tidy(theirs.fitmentRange)).map(v => canonicalYears(v));
-  if (!aRanges.length || !bRanges.length || aRanges.some(v => !v) || bRanges.some(v => !v)) addFit('fitmentRange', 'unknown', '一方或双方缺少有效适配年份');
-  else if (aRanges.length === bRanges.length && aRanges.every((a, i) => a![0] === bRanges[i]![0] && a![1] === bRanges[i]![1])) addFit('fitmentRange', 'same', '年份范围一致');
-  else {
-    const overlap = aRanges.some(a => bRanges.some(b => a![0] <= b![1] && b![0] <= a![1]));
-    addFit('fitmentRange', overlap ? 'partial' : 'different', overlap ? '年份范围部分重叠，不能当作完全一致或明确不兼容' : '年份范围没有重叠');
+  dimensions.push(field('fitmentRange', yearStatus, tidy(ours.fitmentRange), tidy(theirs.fitmentRange),
+    yearStatus === 'same' ? '年份一致' : yearStatus === 'partial' ? '年份范围有重叠，按宽松规则接受' : yearStatus === 'different' ? '年份范围没有重叠' : '一方或双方缺少明确年份'));
+
+  const aModels = values(tidy(ours.model)), bModels = values(tidy(theirs.model));
+  const aChassis = values(tidy(ours.chassis)), bChassis = values(tidy(theirs.chassis));
+  let modelStatus: CheckStatus = 'unknown';
+  if (aModels.length && bModels.length) modelStatus = aModels.some(v => bModels.includes(v)) ? (tidy(ours.model) === tidy(theirs.model) ? 'same' : 'partial') : 'different';
+  else if (aChassis.length && bChassis.length) modelStatus = aChassis.some(v => bChassis.includes(v)) ? 'same' : 'different';
+  for (const key of ['chassis', 'body', 'trim'] as const) {
+    const a = values(tidy(ours[key])), b = values(tidy(theirs[key]));
+    if (!a.length || !b.length) continue; // Optional model details do not block a match.
+    // Generic 4-door wording is not a contradictory body style by itself.
+    const aa = key === 'body' ? a.filter(v => !v.endsWith('door')) : a;
+    const bb = key === 'body' ? b.filter(v => !v.endsWith('door')) : b;
+    if (!aa.length || !bb.length) continue;
+    const status: CheckStatus = aa.some(v => bb.includes(v)) ? aa.join('|') === bb.join('|') ? 'same' : 'partial' : 'different';
+    fitmentDetails.push(field(key, status, tidy(ours[key]), tidy(theirs[key]), status === 'different' ? '明确的车型限定不同' : '车型限定存在交集'));
+    if (status === 'different') modelStatus = 'different';
+    else if (status === 'partial' && modelStatus === 'same') modelStatus = 'partial';
   }
-  for (const field of ['chassis', 'body', 'trim', 'exclusions'] as const) {
-    const a = tidy(ours[field]), b = tidy(theirs[field]);
-    if (!a && !b) continue;
-    if (!a || !b) addFit(field, 'unknown', '车身、配置或排除项在一方资料中缺失');
-    else if (a === b) addFit(field, 'same', '适配限定一致');
-    else if (field === 'exclusions') addFit(field, 'partial', '排除项不同，需逐项核对');
-    else {
-      const overlaps = values(a).some(v => values(b).includes(v));
-      addFit(field, overlaps ? 'partial' : 'different', overlaps ? '适配限定部分重叠' : '适配限定不同');
-    }
-  }
-  // Explicit exclusion versus an affirmative restriction is a definite conflict.
   for (const [excluded, positive] of [[ours, theirs], [theirs, ours]]) {
     if (excluded.exclusions && positive.trim && values(positive.trim).some(v => new RegExp(`\\b${escape(v)}\\b`, 'i').test(excluded.exclusions!))) {
-      addFit('exclusions', 'different', '参考或我方要求的配置被另一方明确排除');
+      modelStatus = 'different'; fitmentDetails.push(field('exclusions', 'different', tidy(ours.exclusions), tidy(theirs.exclusions), '车型被另一方明确排除'));
     }
   }
-  const identity = dimensions.filter(c => ['make', 'model'].includes(c.field));
-  const fitStatus: CheckStatus = [...identity, ...fitChecks].some(c => c.status === 'different') ? 'different' :
-    [...identity, ...fitChecks].some(c => c.status === 'partial') ? 'partial' :
-    [...identity, ...fitChecks].some(c => c.status === 'unknown') ? 'unknown' : 'same';
-  dimensions.push({ field: 'fitment', status: fitStatus, internal: [ours.make, ours.model, ours.fitmentRange, ours.chassis, ours.body, ours.trim, ours.exclusions].filter(Boolean).join('; '), external: [theirs.make, theirs.model, theirs.fitmentRange, theirs.chassis, theirs.body, theirs.trim, theirs.exclusions].filter(Boolean).join('; '), reason: fitChecks.filter(c => c.status !== 'same').map(c => c.reason).join('；') || '已提取的适配条件一致' });
-  dimensions.push({ field: 'visual', status: 'unknown', internal: '', external: '', reason: '尚未进行图片造型比对，需人工确认结构、孔位和外观' });
-  const variantConfirmed = page ? page.variantStatus !== 'unconfirmed' : true;
-  const differences = dimensions.filter(c => c.status === 'different');
-  const missing = dimensions.filter(c => c.status === 'unknown' || c.status === 'partial');
-  // Different style names alone do not prove different physical shapes.
-  const decisiveDifferences = differences.filter(c => c.field !== 'style');
-  const verdict = decisiveDifferences.length && variantConfirmed && (!page || page.status === 'ok') ? 'NOT FIT' : 'REVIEW';
-  const mismatches = differences.map(c => `${c.field}: ${c.reason}`);
-  const reasons = [...mismatches];
-  if (differences.some(c => c.field === 'style')) reasons.push('款式名称有差异，需结合图片确认实际造型');
-  if (page && page.status !== 'ok') reasons.unshift(page.reason);
-  if (!variantConfirmed) reasons.push('参考商品的具体变体未确认，差异仅供人工复核');
-  if (fitStatus === 'partial') reasons.push('适配范围部分重叠');
-  if (!mismatches.length) reasons.push('未发现已证实差异，但信息不足，不能确认同款');
-  return { verdict, confidence: 'not_calibrated', dimensions, fitmentDetails: fitChecks, mismatches,
-    reason: reasons.join('；'), evidenceCoverage: `${dimensions.filter(c => c.status === 'same' || c.status === 'different').length}/${dimensions.length}`,
-    needsReview: verdict === 'REVIEW', missingFields: missing.map(c => c.field), version: FITMENT_VERSION };
+  const modelValue = (v: Partial<FeatureSet>) => [v.model, v.chassis, v.body, v.trim, v.exclusions].filter(Boolean).join('; ');
+  dimensions.push(field('model', modelStatus, modelValue(ours), modelValue(theirs), modelStatus === 'same' ? '车型相符' : modelStatus === 'partial' ? '车型范围有交集，按宽松规则接受' : modelStatus === 'different' ? '明确的车型或车身/配置限定不同' : '一方或双方未识别出明确车型'));
+  for (const name of ['color', 'style'] as const) {
+    const internal = tidy(ours[name]), external = tidy(theirs[name]);
+    let status: CheckStatus = unknown(internal) || unknown(external) ? 'unknown' : 'different';
+    if (status !== 'unknown') {
+      if (values(internal).length > 1 || values(external).length > 1) status = 'unknown';
+      else if (name === 'color' ? colorEquivalent(internal, external) : normalizeStyle(internal) === normalizeStyle(external)) status = 'same';
+    }
+    dimensions.push(field(name, status, internal, external, status === 'same' ? '字段相符' : status === 'different' ? `${internal} ≠ ${external}` : '未明确指定或存在多个候选值'));
+  }
+  const differences = dimensions.filter(d => d.status === 'different');
+  const missing = dimensions.filter(d => d.status === 'unknown');
+  const sourceConflicts = ours.conflicts || [];
+  const pageReady = !page || page.status === 'ok';
+  const variantReady = !page || page.variantStatus !== 'unconfirmed';
+  const verdict = !pageReady || !variantReady || sourceConflicts.length ? 'REVIEW' : differences.length ? 'NOT FIT' : missing.length ? 'REVIEW' : 'FIT';
+  const mismatches = differences.map(d => `${d.field}: ${d.reason}`);
+  const reasons = [...mismatches, ...sourceConflicts];
+  if (!pageReady) reasons.unshift(page!.reason);
+  if (!variantReady) reasons.push('参考商品具体变体未确认');
+  if (missing.length) reasons.push(`信息不足：${missing.map(d => ({ fitmentRange: '年份', model: '车型', color: '颜色', style: '款式' })[d.field]).join('、')}`);
+  if (verdict === 'FIT') reasons.push('年份、车型、颜色、款式符合当前宽松规则');
+  dimensions.filter(d => d.status === 'partial').forEach(d => reasons.push(d.reason));
+  return { verdict, confidence: 'not_calibrated', dimensions, fitmentDetails, mismatches, reason: reasons.join('；'),
+    evidenceCoverage: `${dimensions.filter(d => d.status !== 'unknown').length}/4`, needsReview: verdict === 'REVIEW',
+    missingFields: missing.map(d => d.field), version: FITMENT_VERSION };
 }
 
 function canonicalYears(value: string): [number, number] | null {

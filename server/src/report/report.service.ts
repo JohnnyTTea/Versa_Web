@@ -5,7 +5,7 @@ import * as path from 'path';
 import ExcelJS from 'exceljs';
 import { randomUUID, createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { extractProductFeatures, compareProductFeatures, emptyEvidence, FITMENT_VERSION, type PageEvidence } from './sku-fitment';
+import { extractProductFeatures, extractLocalSkuFeatures, extractReferenceFeatures, compareProductFeatures, emptyEvidence, FITMENT_VERSION, type PageEvidence } from './sku-fitment';
 import { fetchProductEvidence } from './sku-fitment-fetch';
 
 const AIS_CUTOVER_DATE = '2026-01-01';
@@ -922,7 +922,7 @@ export class ReportService {
 
   private buildSkuFeatureObject(item: any) {
     const combined = `${item.Desc1 || ''} ${item.Desc2 || ''}`.trim();
-    const features = extractProductFeatures(combined);
+    const features = extractLocalSkuFeatures(item.Itemno || '', item.Desc1 || '', item.Desc2 || '');
     return {
       ...features,
       itemno: item.Itemno,
@@ -1115,7 +1115,7 @@ export class ReportService {
       const fetched = await (cache?.get(targetUrl) || fetchProductEvidence(targetUrl));
       page = fetched.page; html = fetched.html;
       // No fallback to our own description. A failed page has no external features.
-      const external = extractProductFeatures(page.status === 'ok' ? page.text : '');
+      const external = extractReferenceFeatures(page);
       const comparison = compareProductFeatures({ ...internal, dimensions: internal.productDimensions }, external, page);
       result = { sku, goodsId, targetUrl, fileName, ...comparison, internal, external,
         internalSource: { schema: 'aisdata0', table: 'item', itemno: sku, retrievedAt },

@@ -49,8 +49,8 @@ function readExcelRows(file: File): Promise<any[]> {
   });
 }
 
-const VERDICT_LABELS: Record<string, string> = { "NOT FIT": "不可直接比价", REVIEW: "待人工复核", INVALID: "输入无效" };
-const FIELD_LABELS: Record<string, string> = { make: "品牌", model: "车型", partType: "产品类型", style: "款式（文字）", color: "颜色/表面", material: "材质", dimensions: "尺寸", quantity: "套装数量", fitment: "适配关系", visual: "图片造型" };
+const VERDICT_LABELS: Record<string, string> = { FIT: "四项匹配", "NOT FIT": "四项不匹配", REVIEW: "待人工复核", INVALID: "输入无效" };
+const FIELD_LABELS: Record<string, string> = { fitmentRange: "年份", model: "车型", color: "颜色", style: "款式" };
 const STATUS_LABELS: Record<string, string> = { same: "一致", different: "不同", partial: "部分重叠", unknown: "信息不足" };
 const PAGE_LABELS: Record<string, string> = { ok: "已提取商品资料", blocked: "访问受限/验证码", unavailable: "链接失效/商品不可用", not_product: "未找到商品资料", ambiguous: "商品未确认", fetch_failed: "获取失败", invalid_url: "链接无效", invalid_input: "输入资料无效" };
 const safeLink = (value: string) => /^https:\/\//i.test(value || "") ? value : undefined;
@@ -75,7 +75,7 @@ export default function SkuFitmentPage() {
 
   const downloadAnalyzeCsv = (results: any[]) => {
     if (!results.length) return;
-    const headers = ["Goods ID", "SKU", "比价可比性", "程序状态", "资料覆盖", "网页状态", "具体变体", "抓取时间", "参考标题", "我方描述", "参考商品文字", "原因", "参考链接", "最终链接", "参考价格", "币种", "价格核查", "证据ID", "分析版本", ...Object.entries(FIELD_LABELS).flatMap(([, label]) => [`${label}结论`, `${label}我方`, `${label}参考`, `${label}依据`])];
+    const headers = ["Goods ID", "SKU", "比价可比性", "程序状态", "资料覆盖", "网页状态", "具体变体", "抓取时间", "参考标题", "我方描述", "参考商品文字", "原因", "参考链接", "最终链接", "参考价格", "币种", "价格核查", "证据ID", "分析版本", ...Object.entries(FIELD_LABELS).flatMap(([, label]) => [`${label}结论`, `${label}我方`, `${label}参考`, `${label}依据`, `${label}我方来源`])];
     const csvCell = (value: unknown) => {
       let text = String(value ?? "");
       if (/^[\t\r ]*[=+@-]/.test(text)) text = `'${text}`;
@@ -88,7 +88,7 @@ export default function SkuFitmentPage() {
       row.targetUrl, row.page?.finalUrl, row.page?.price, row.page?.currency, row.priceReview?.reason, row.evidenceId, row.version,
       ...Object.keys(FIELD_LABELS).flatMap(field => {
         const d = row.dimensions?.find((item: any) => item.field === field);
-        return [STATUS_LABELS[d?.status] || "信息不足", d?.internal, d?.external, d?.reason];
+        return [STATUS_LABELS[d?.status] || "信息不足", d?.internal, d?.external, d?.reason, row.internal?.sources?.[field]];
       }),
     ])];
     const blob = new Blob(["\uFEFF", lines.map(row => row.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8;" });
@@ -184,7 +184,7 @@ export default function SkuFitmentPage() {
       <section className="dr-section">
         <div className="dr-header">
           <h2>SKU Fitment Check</h2>
-          <div className="dr-entity-current">上传 SKU 与参考链接，分别核查适配、颜色、材质及款式，并保存来源证据。资料缺失、变体未确认或网页受限时转人工复核。</div>
+          <div className="dr-entity-current">上传 SKU 与参考链接，使用我方 SKU、Desc1/Desc2 与参考商品比对年份、车型、颜色及款式，并保存来源证据。品牌、图片、材质、尺寸和数量不参与判断。资料缺失、变体未确认或网页受限时转人工复核。</div>
         </div>
 
         <div className="dr-table-frame" style={{ marginTop: 16 }}>
@@ -216,7 +216,7 @@ export default function SkuFitmentPage() {
               {uploadRows.length ? (
                 <div style={{ marginTop: 18 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
-                    <div className="dr-chart-title">Analysis Results · 不可直接比价 {uploadRows.filter(r => r.verdict === "NOT FIT").length} · 待复核 {uploadRows.filter(r => r.verdict === "REVIEW").length} · 无效输入 {uploadRows.filter(r => r.verdict === "INVALID").length}</div>
+                    <div className="dr-chart-title">Analysis Results · 四项匹配 {uploadRows.filter(r => r.verdict === "FIT").length} · 不匹配 {uploadRows.filter(r => r.verdict === "NOT FIT").length} · 待复核 {uploadRows.filter(r => r.verdict === "REVIEW").length} · 无效输入 {uploadRows.filter(r => r.verdict === "INVALID").length}</div>
                     <button
                       type="button"
                       onClick={() => downloadAnalyzeCsv(uploadRows)}
@@ -226,7 +226,7 @@ export default function SkuFitmentPage() {
                     </button>
                   </div>
 
-                  <p style={{ color: "#64748b", fontSize: 13 }}>资料覆盖表示已能比较的字段数量，并非准确率。图片造型、价格条件仍需人工核实；文字相同不会直接判定为同款。</p>
+                  <p style={{ color: "#64748b", fontSize: 13 }}>资料覆盖表示已能比较的字段数量，并非准确率。按年份、车型、颜色、款式四项判断；年份范围有重叠按宽松规则接受。品牌和图片不作为通过条件，价格仍单独核查。</p>
                   <div style={{ maxHeight: 620, overflow: "auto" }}>
                     <table className="dr-table" style={{ minWidth: 760 }}>
                       <thead>
@@ -243,7 +243,7 @@ export default function SkuFitmentPage() {
                           <tr key={`${row.sku || index}-${index}`}>
                             <td>{row.sku || "-"}</td>
                             <td>{VERDICT_LABELS[row.verdict] || row.verdict || "-"}</td>
-                            <td>{PAGE_LABELS[row.page?.status] || "未完成"}<br />{row.evidenceCoverage || "0/10"}<br /><small>{row.page?.variantStatus === "unconfirmed" ? "变体未确认" : row.page?.selectedVariant || "未检测到多变体"}</small></td>
+                            <td>{PAGE_LABELS[row.page?.status] || "未完成"}<br />{row.evidenceCoverage || "0/4"}<br /><small>{row.page?.variantStatus === "unconfirmed" ? "变体未确认" : row.page?.selectedVariant || "未检测到多变体"}</small></td>
                             <td style={{ minWidth: 230, whiteSpace: "normal" }}>{row.reason || "-"}</td>
                             <td style={{ minWidth: 330 }}>
                               <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
@@ -260,12 +260,12 @@ export default function SkuFitmentPage() {
                                   <thead><tr><th>维度</th><th>结论</th><th>我方</th><th>参考</th><th>依据</th></tr></thead>
                                   <tbody>{row.dimensions?.map((d: any) => <tr key={d.field}>
                                     <td>{FIELD_LABELS[d.field] || d.field}</td><td>{STATUS_LABELS[d.status] || d.status}</td>
-                                    <td style={{ whiteSpace: "normal" }}>{d.internal || "未提供"}</td><td style={{ whiteSpace: "normal" }}>{d.external || "未提供"}</td><td style={{ whiteSpace: "normal" }}>{d.reason}</td>
+                                    <td style={{ whiteSpace: "normal" }}>{d.internal || "未提供"}<br /><small>{row.internal?.sources?.[d.field] || ""}</small></td><td style={{ whiteSpace: "normal" }}>{d.external || "未提供"}</td><td style={{ whiteSpace: "normal" }}>{d.reason}</td>
                                   </tr>)}</tbody>
                                 </table>
                                 <p style={{ whiteSpace: "normal" }}>价格核查：{row.priceReview?.reason || "需人工核查"}。参考页面价格：{row.page?.currency} {row.page?.price || "未获取"}</p>
                                 {row.evidenceError && <p role="alert">{row.evidenceError}</p>}
-                                {row.page?.images?.map((src: string, i: number) => safeLink(src) && <a key={src} href={safeLink(src)} target="_blank" rel="noreferrer" style={{ marginRight: 12 }}>参考图 {i + 1}</a>)}
+
                               </details>
                             </td>
                           </tr>
