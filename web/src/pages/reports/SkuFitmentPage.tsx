@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import "../../styles/report.css";
 
@@ -15,12 +15,13 @@ async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function apiPost<T>(url: string, body: any): Promise<T> {
+async function apiPost<T>(url: string, body: any, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -48,8 +49,16 @@ function readExcelRows(file: File): Promise<any[]> {
   });
 }
 
+const VERDICT_LABELS: Record<string, string> = { "NOT FIT": "不可直接比价", REVIEW: "待人工复核", INVALID: "输入无效" };
+const FIELD_LABELS: Record<string, string> = { make: "品牌", model: "车型", partType: "产品类型", style: "款式（文字）", color: "颜色/表面", material: "材质", dimensions: "尺寸", quantity: "套装数量", fitment: "适配关系", visual: "图片造型" };
+const STATUS_LABELS: Record<string, string> = { same: "一致", different: "不同", partial: "部分重叠", unknown: "信息不足" };
+const PAGE_LABELS: Record<string, string> = { ok: "已提取商品资料", blocked: "访问受限/验证码", unavailable: "链接失效/商品不可用", not_product: "未找到商品资料", ambiguous: "商品未确认", fetch_failed: "获取失败", invalid_url: "链接无效", invalid_input: "输入资料无效" };
+const safeLink = (value: string) => /^https:\/\//i.test(value || "") ? value : undefined;
+
 export default function SkuFitmentPage() {
   const [uploading, setUploading] = useState(false);
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
   const [uploadError, setUploadError] = useState("");
   const [uploadRows, setUploadRows] = useState<any[]>([]);
   const [jobStatus, setJobStatus] = useState<{
@@ -66,17 +75,23 @@ export default function SkuFitmentPage() {
 
   const downloadAnalyzeCsv = (results: any[]) => {
     if (!results.length) return;
-    const headers = ["sku", "verdict", "confidence", "mismatches", "reason", "targetUrl", "fileName"];
-    const rows = [
-      headers.join(","),
-      ...results.map((row) => headers.map((header) => {
-        const value = row?.[header] ?? "";
-        const str = String(value ?? "").replace(/"/g, '""');
-        return `"${str}"`;
-      }).join(",")),
-    ].join("\r\n");
-
-    const blob = new Blob([rows], { type: "text/csv;charset=utf-8;" });
+    const headers = ["Goods ID", "SKU", "比价可比性", "程序状态", "资料覆盖", "网页状态", "具体变体", "抓取时间", "参考标题", "我方描述", "参考商品文字", "原因", "参考链接", "最终链接", "参考价格", "币种", "价格核查", "证据ID", "分析版本", ...Object.entries(FIELD_LABELS).flatMap(([, label]) => [`${label}结论`, `${label}我方`, `${label}参考`, `${label}依据`])];
+    const csvCell = (value: unknown) => {
+      let text = String(value ?? "");
+      if (/^[\t\r ]*[=+@-]/.test(text)) text = `'${text}`;
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+    const lines = [headers, ...results.map(row => [
+      row.goodsId, row.sku, VERDICT_LABELS[row.verdict] || row.verdict, row.verdict, row.evidenceCoverage, PAGE_LABELS[row.page?.status] || row.page?.status,
+      row.page?.selectedVariant || (row.page?.variantStatus === "unconfirmed" ? "未确认" : "未检测到多变体"),
+      row.page?.fetchedAt, row.page?.title, row.internal?.text, row.external?.text, row.reason,
+      row.targetUrl, row.page?.finalUrl, row.page?.price, row.page?.currency, row.priceReview?.reason, row.evidenceId, row.version,
+      ...Object.keys(FIELD_LABELS).flatMap(field => {
+        const d = row.dimensions?.find((item: any) => item.field === field);
+        return [STATUS_LABELS[d?.status] || "信息不足", d?.internal, d?.external, d?.reason];
+      }),
+    ])];
+    const blob = new Blob(["\uFEFF", lines.map(row => row.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -91,6 +106,9 @@ export default function SkuFitmentPage() {
     const file = event?.target?.files?.[0];
     if (!file) return;
 
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     setUploading(true);
     setUploadError("");
     setUploadRows([]);
@@ -106,7 +124,9 @@ export default function SkuFitmentPage() {
         rows: rows.map((row) => {
           const normalized: Record<string, any> = {};
           Object.entries(row).forEach(([key, value]) => {
-            normalized[String(key)] = value ?? "";
+            const name = String(key).normalize("NFKC").replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
+            const inputKeys = ["sku", "itemno", "productsku", "partnumber", "productnumber", "货号", "cpono", "goodsid"];
+            if (inputKeys.includes(name) || /url|link|链接|网址|参考地址|网页/.test(name)) normalized[String(key)] = value ?? "";
           });
           return normalized;
         }),
@@ -117,6 +137,7 @@ export default function SkuFitmentPage() {
       const job = await apiPost<{ ok: boolean; jobId?: string; status?: string; message?: string; total?: number; done?: number; results?: any[]; fileName?: string }>(
         "/api/report/data/analyze",
         payload,
+        controller.signal,
       );
 
       const jobId = job.jobId;
@@ -133,43 +154,22 @@ export default function SkuFitmentPage() {
         fileName: job.fileName || file.name,
       });
 
-      const pollStatus = async () => {
-        const status = await apiGet<{ ok: boolean; status?: string; total?: number; done?: number; results?: any[]; message?: string; error?: string; fileName?: string }>(`/api/report/data/analyze/progress?jobId=${encodeURIComponent(jobId)}`);
-
-        if (!status.ok) {
-          setUploadError(status.message || "Analysis failed");
-          setUploading(false);
-          setJobStatus(null);
-          return;
-        }
-
-        setJobStatus({
-          jobId,
-          status: status.status || "running",
-          total: status.total || rows.length,
-          done: status.done || 0,
-          results: status.results || [],
-          fileName: status.fileName || file.name,
-          error: status.error,
-        });
-
+      while (!controller.signal.aborted) {
+        const status = await apiGet<{ ok: boolean; status?: string; total?: number; done?: number; results?: any[]; message?: string; error?: string; fileName?: string }>(`/api/report/data/analyze/progress?jobId=${encodeURIComponent(jobId)}`, controller.signal);
+        if (controller.signal.aborted) return;
+        if (!status.ok) throw new Error(status.message || "Analysis failed");
+        setJobStatus({ jobId, status: status.status || "running", total: status.total || rows.length, done: status.done || 0,
+          results: status.results || [], fileName: status.fileName || file.name, error: status.error });
         if (status.status === "done") {
           setUploadRows(status.results || []);
           setUploading(false);
-          return;
+          break;
         }
-
-        if (status.status === "failed") {
-          setUploadError(status.message || status.error || "Analysis failed");
-          setUploading(false);
-          return;
-        }
-
-        window.setTimeout(pollStatus, 800);
-      };
-
-      await pollStatus();
+        if (status.status === "failed") throw new Error(status.message || status.error || "Analysis failed");
+        await new Promise(resolve => window.setTimeout(resolve, 1000));
+      }
     } catch (error: any) {
+      if (controller.signal.aborted) return;
       setUploadRows([]);
       setJobStatus(null);
       setUploadError(String(error?.message || error || "Upload analyze failed"));
@@ -184,7 +184,7 @@ export default function SkuFitmentPage() {
       <section className="dr-section">
         <div className="dr-header">
           <h2>SKU Fitment Check</h2>
-          <div className="dr-entity-current">Upload a file with SKU + target URL to verify whether the product matches the target page.</div>
+          <div className="dr-entity-current">上传 SKU 与参考链接，分别核查适配、颜色、材质及款式，并保存来源证据。资料缺失、变体未确认或网页受限时转人工复核。</div>
         </div>
 
         <div className="dr-table-frame" style={{ marginTop: 16 }}>
@@ -195,11 +195,11 @@ export default function SkuFitmentPage() {
               </div>
 
               <div style={{ marginTop: 12 }}>
-                <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} />
+                <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} disabled={uploading} />
                 {(uploading || jobStatus) ? (
                   <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: "#fff7ed", border: "1px solid #fdba74" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 8 }}>
-                      <strong>{jobStatus?.status === "done" ? "Analysis completed" : "Analyzing uploaded file"}</strong>
+                      <strong>{jobStatus?.status === "done" ? "Analysis completed" : jobStatus?.status === "failed" ? "Analysis failed" : "Analyzing uploaded file"}</strong>
                       <span>{jobStatus && jobStatus.total ? `${progressPercent}%` : "0%"}</span>
                     </div>
                     <div style={{ height: 10, borderRadius: 999, background: "#fed7aa", overflow: "hidden" }}>
@@ -216,7 +216,7 @@ export default function SkuFitmentPage() {
               {uploadRows.length ? (
                 <div style={{ marginTop: 18 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
-                    <div className="dr-chart-title">Analysis Results</div>
+                    <div className="dr-chart-title">Analysis Results · 不可直接比价 {uploadRows.filter(r => r.verdict === "NOT FIT").length} · 待复核 {uploadRows.filter(r => r.verdict === "REVIEW").length} · 无效输入 {uploadRows.filter(r => r.verdict === "INVALID").length}</div>
                     <button
                       type="button"
                       onClick={() => downloadAnalyzeCsv(uploadRows)}
@@ -226,25 +226,48 @@ export default function SkuFitmentPage() {
                     </button>
                   </div>
 
-                  <div style={{ maxHeight: 420, overflow: "auto" }}>
+                  <p style={{ color: "#64748b", fontSize: 13 }}>资料覆盖表示已能比较的字段数量，并非准确率。图片造型、价格条件仍需人工核实；文字相同不会直接判定为同款。</p>
+                  <div style={{ maxHeight: 620, overflow: "auto" }}>
                     <table className="dr-table" style={{ minWidth: 760 }}>
                       <thead>
                         <tr>
                           <th>SKU</th>
                           <th>Verdict</th>
-                          <th>Confidence</th>
-                          <th>Mismatches</th>
-                          <th>Reason</th>
+                          <th>网页状态 / 资料覆盖</th>
+                          <th>差异与待核查项</th>
+                          <th>双方资料与证据</th>
                         </tr>
                       </thead>
                       <tbody>
                         {uploadRows.map((row, index) => (
                           <tr key={`${row.sku || index}-${index}`}>
                             <td>{row.sku || "-"}</td>
-                            <td>{row.verdict || "-"}</td>
-                            <td>{row.confidence || "-"}</td>
-                            <td>{Array.isArray(row.mismatches) ? row.mismatches.join("; ") : row.mismatches || "-"}</td>
-                            <td>{row.reason || "-"}</td>
+                            <td>{VERDICT_LABELS[row.verdict] || row.verdict || "-"}</td>
+                            <td>{PAGE_LABELS[row.page?.status] || "未完成"}<br />{row.evidenceCoverage || "0/10"}<br /><small>{row.page?.variantStatus === "unconfirmed" ? "变体未确认" : row.page?.selectedVariant || "未检测到多变体"}</small></td>
+                            <td style={{ minWidth: 230, whiteSpace: "normal" }}>{row.reason || "-"}</td>
+                            <td style={{ minWidth: 330 }}>
+                              <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+                                {safeLink(row.targetUrl) && <a href={safeLink(row.targetUrl)} target="_blank" rel="noreferrer">参考商品</a>}
+                                {row.evidenceId && <a href={`/api/report/data/analyze/evidence?id=${encodeURIComponent(row.evidenceId)}`} download>下载来源证据</a>}
+                              </div>
+                              <details>
+                                <summary style={{ cursor: "pointer" }}>展开双方资料与分项结果</summary>
+                                <p style={{ whiteSpace: "normal" }}><strong>我方：</strong>{row.internal?.text || "无资料"}</p>
+                                <p style={{ whiteSpace: "normal" }}><strong>参考：</strong>{row.page?.title || "未读取到商品标题"}</p>
+                                <p>抓取时间：{row.page?.fetchedAt ? new Date(row.page.fetchedAt).toLocaleString() : "—"}</p>
+                                <p style={{ whiteSpace: "normal" }}>选中变体：{row.page?.selectedVariant || "未确认具体选项"}</p>
+                                <table className="dr-table" style={{ minWidth: 540 }}>
+                                  <thead><tr><th>维度</th><th>结论</th><th>我方</th><th>参考</th><th>依据</th></tr></thead>
+                                  <tbody>{row.dimensions?.map((d: any) => <tr key={d.field}>
+                                    <td>{FIELD_LABELS[d.field] || d.field}</td><td>{STATUS_LABELS[d.status] || d.status}</td>
+                                    <td style={{ whiteSpace: "normal" }}>{d.internal || "未提供"}</td><td style={{ whiteSpace: "normal" }}>{d.external || "未提供"}</td><td style={{ whiteSpace: "normal" }}>{d.reason}</td>
+                                  </tr>)}</tbody>
+                                </table>
+                                <p style={{ whiteSpace: "normal" }}>价格核查：{row.priceReview?.reason || "需人工核查"}。参考页面价格：{row.page?.currency} {row.page?.price || "未获取"}</p>
+                                {row.evidenceError && <p role="alert">{row.evidenceError}</p>}
+                                {row.page?.images?.map((src: string, i: number) => safeLink(src) && <a key={src} href={safeLink(src)} target="_blank" rel="noreferrer" style={{ marginRight: 12 }}>参考图 {i + 1}</a>)}
+                              </details>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

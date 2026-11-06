@@ -1,4 +1,5 @@
 import { ReportService } from './report.service';
+import { compareProductFeatures } from './sku-fitment';
 
 describe('ReportService.date-range optimization', () => {
   it('defaults to the last 12 months instead of 7 years', () => {
@@ -42,25 +43,27 @@ describe('ReportService.date-range optimization', () => {
     expect(sql).toContain('GROUP BY yy, mm');
   });
 
-  it('extracts SKU and target URL from common uploaded column names and marks a matching page as FIT', async () => {
+  it('extracts SKU and target URL from common uploaded column names and keeps a text-only matching page in REVIEW', async () => {
     const service = new ReportService({} as any);
     const db = { query: jest.fn().mockResolvedValue([{ Itemno: 'T-1001', Desc1: 'Toyota Camry Front Bumper Black', Desc2: '', Vendno: 'ACME' }]) };
     const originalFetch = global.fetch;
     global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'Toyota Camry front bumper black 2019 2021',
+      ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }),
+      text: async () => '<h1 id="productTitle">2019-2021 Toyota Camry front bumper black</h1>',
     } as any);
 
     try {
       (service as any).db = db;
+      (service as any).saveFitmentEvidence = jest.fn().mockResolvedValue('fixture');
       const result = await service.analyzeRows([
-        { 'Product SKU': 'T-1001', 'Target URL': 'https://example.com/product/t-1001' },
+        { 'Product SKU': 'T-1001', 'Target URL': 'https://www.amazon.com/dp/B000000001' },
       ], 'fixture.xlsx');
 
       expect(result.ok).toBe(true);
       expect(result.results[0].sku).toBe('T-1001');
-      expect(result.results[0].verdict).toBe('FIT');
-      expect(result.results[0].targetUrl).toBe('https://example.com/product/t-1001');
+      expect(result.results[0].verdict).toBe('REVIEW');
+      expect(result.results[0].page.status).toBe('ok');
+      expect(result.results[0].targetUrl).toBe('https://www.amazon.com/dp/B000000001');
     } finally {
       global.fetch = originalFetch;
     }
@@ -71,18 +74,20 @@ describe('ReportService.date-range optimization', () => {
     const db = { query: jest.fn().mockResolvedValue([{ Itemno: 'T-1001', Desc1: 'Toyota Camry Front Bumper Black', Desc2: '', Vendno: 'ACME' }]) };
     const originalFetch = global.fetch;
     global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'Toyota Camry front bumper black 2019 2021',
+      ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }),
+      text: async () => '<h1 id="productTitle">2019-2021 Toyota Camry front bumper black</h1>',
     } as any);
 
     try {
       (service as any).db = db;
+      (service as any).saveFitmentEvidence = jest.fn().mockResolvedValue('fixture');
       const result = await service.analyzeRows([
-        { SKU: 'T-1001', 参考链接: 'https://example.com/product/t-1001' },
+        { SKU: 'T-1001', 参考链接: 'https://www.amazon.com/dp/B000000001' },
       ], 'fixture.xlsx');
 
-      expect(result.results[0].targetUrl).toBe('https://example.com/product/t-1001');
-      expect(result.results[0].verdict).toBe('FIT');
+      expect(result.results[0].targetUrl).toBe('https://www.amazon.com/dp/B000000001');
+      expect(result.results[0].verdict).toBe('REVIEW');
+      expect(result.results[0].page.status).toBe('ok');
     } finally {
       global.fetch = originalFetch;
     }
@@ -93,19 +98,21 @@ describe('ReportService.date-range optimization', () => {
     const db = { query: jest.fn().mockResolvedValue([{ Itemno: 'T-1001', Desc1: 'Toyota Camry Front Bumper Black', Desc2: '', Vendno: 'ACME' }]) };
     const originalFetch = global.fetch;
     global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'Toyota Camry front bumper black 2019 2021',
+      ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }),
+      text: async () => '<h1 id="productTitle">2019-2021 Toyota Camry front bumper black</h1>',
     } as any);
 
     try {
       (service as any).db = db;
+      (service as any).saveFitmentEvidence = jest.fn().mockResolvedValue('fixture');
       const result = await service.analyzeRows([
-        { ' Product SKU ': 'T-1001', 'Reference URL ': 'https://example.com/product/t-1001' },
+        { ' Product SKU ': 'T-1001', 'Reference URL ': 'https://www.amazon.com/dp/B000000001' },
       ], 'fixture.xlsx');
 
       expect(result.results[0].sku).toBe('T-1001');
-      expect(result.results[0].targetUrl).toBe('https://example.com/product/t-1001');
-      expect(result.results[0].verdict).toBe('FIT');
+      expect(result.results[0].targetUrl).toBe('https://www.amazon.com/dp/B000000001');
+      expect(result.results[0].verdict).toBe('REVIEW');
+      expect(result.results[0].page.status).toBe('ok');
     } finally {
       global.fetch = originalFetch;
     }
@@ -116,47 +123,47 @@ describe('ReportService.date-range optimization', () => {
     const db = { query: jest.fn().mockResolvedValue([{ Itemno: 'T-1001', Desc1: 'Toyota Camry Front Bumper Black', Desc2: '', Vendno: 'ACME' }]) };
     const originalFetch = global.fetch;
     global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      text: async () => 'Toyota Camry front bumper black 2019 2021',
+      ok: true, status: 200, headers: new Headers({ 'content-type': 'text/html' }),
+      text: async () => '<h1 id="productTitle">2019-2021 Toyota Camry front bumper black</h1>',
     } as any);
 
     try {
       (service as any).db = db;
+      (service as any).saveFitmentEvidence = jest.fn().mockResolvedValue('fixture');
       const result = await service.analyzeRows([
-        { 'Goods ID': 'T-1001', '参考链接': 'https://example.com/product/t-1001', '检查结果': 'PASS' },
+        { SKU: 'T-1001', 'Goods ID': '610567364390980', '参考链接': 'https://www.amazon.com/dp/B000000001', '检查结果': 'PASS' },
       ], 'fixture.xlsx');
 
       expect(result.results[0].sku).toBe('T-1001');
-      expect(result.results[0].targetUrl).toBe('https://example.com/product/t-1001');
-      expect(result.results[0].verdict).toBe('FIT');
+      expect(result.results[0].targetUrl).toBe('https://www.amazon.com/dp/B000000001');
+      expect(result.results[0].verdict).toBe('REVIEW');
+      expect(result.results[0].page.status).toBe('ok');
     } finally {
       global.fetch = originalFetch;
     }
   });
 
-  it('ignores missing local metadata and semantic equivalents instead of over-reporting mismatches', () => {
+  it('keeps missing metadata unknown while recognizing material aliases', () => {
     const service = new ReportService({} as any);
 
-    expect((service as any).compareFeatureValues('PP', 'polypropylene', 'material')).toMatchObject({ ok: true });
-    const fit = (service as any).compareSkuFeatures(
+    expect(compareProductFeatures({ material: 'PP' }, { material: 'polypropylene' }).dimensions.find(d => d.field === 'material')?.status).toBe('same');
+    const fit = compareProductFeatures(
       { make: '', model: '', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'urethane', fitmentRange: '01-05' },
       { make: 'lexus', model: 'is300', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'pu', fitmentRange: '2001-2005' },
-      'https://example.com/product',
     );
 
-    expect(fit.verdict).toBe('FIT');
+    expect(fit.verdict).toBe('REVIEW');
     expect(fit.mismatches).toEqual([]);
   });
 
-  it('classifies same-fitment style or material drift as REVIEW instead of NOT FIT', () => {
+  it('identifies explicit style or material differences instead of treating them as a match', () => {
     const service = new ReportService({} as any);
-    const review = (service as any).compareSkuFeatures(
+    const review = compareProductFeatures(
       { make: 'lexus', model: 'is300', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'pu', fitmentRange: '2001-2005' },
       { make: 'lexus', model: 'is300', partType: 'front bumper lip', style: 'cs', color: 'black', material: 'pp', fitmentRange: '2001-2005' },
-      'https://example.com/product',
     );
 
-    expect(review.verdict).toBe('REVIEW');
-    expect(review.mismatches).toEqual(expect.arrayContaining(['style: ams != cs', 'material: pu != pp']));
+    expect(review.verdict).toBe('NOT FIT');
+    expect(review.mismatches).toEqual(expect.arrayContaining(['style: ams ≠ cs', 'material: pu ≠ pp']));
   });
 });

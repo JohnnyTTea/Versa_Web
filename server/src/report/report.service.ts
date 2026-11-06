@@ -3,6 +3,10 @@ import { MysqlService } from '../db/mysql.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import ExcelJS from 'exceljs';
+import { randomUUID, createHash } from 'node:crypto';
+import { gzipSync, gunzipSync } from 'node:zlib';
+import { extractProductFeatures, compareProductFeatures, emptyEvidence, FITMENT_VERSION, type PageEvidence } from './sku-fitment';
+import { fetchProductEvidence } from './sku-fitment-fetch';
 
 const AIS_CUTOVER_DATE = '2026-01-01';
 
@@ -862,144 +866,6 @@ export class ReportService {
     };
   }
 
-  private extractNumericRange(value: string): string {
-    const match = String(value || '').match(/(\d{2,4})\s*[-–]\s*(\d{2,4})/);
-    if (!match) return '';
-    return `${match[1]}-${match[2]}`;
-  }
-
-  private extractYearRange(text: string): string {
-    const direct = this.extractNumericRange(text);
-    if (direct) return direct;
-
-    const yearMatch = String(text || '').match(/(19|20)\d{2}/g);
-    if (yearMatch && yearMatch.length >= 2) {
-      return `${yearMatch[0]}-${yearMatch[yearMatch.length - 1]}`;
-    }
-    return '';
-  }
-
-  private extractMakeModel(text: string) {
-    const normalized = (text || '').replace(/\s+/g, ' ').trim();
-    if (!normalized) return { make: '', model: '', fitmentText: '' };
-
-    const makePatterns = [
-      'lexus',
-      'bmw',
-      'honda',
-      'subaru',
-      'toyota',
-      'audi',
-      'nissan',
-      'ford',
-      'mercedes',
-      'volkswagen',
-      'acura',
-      'mazda',
-      'tesla',
-      'mini',
-      'jaguar',
-      'cadillac',
-      'chrysler',
-      'porsche',
-      'hyundai',
-      'kia',
-      'mitsubishi',
-      'volvo',
-    ];
-
-    const foundMake = makePatterns.find((m) => normalized.toLowerCase().includes(m));
-    if (!foundMake) {
-      return { make: '', model: '', fitmentText: normalized };
-    }
-
-    const remainder = normalized.slice(normalized.toLowerCase().indexOf(foundMake));
-    const modelMatch = remainder.match(/([a-z0-9]+(?:\s+[a-z0-9]+)?)\s*(?:front|rear|side|lip|spoiler|grille|diffuser|skirt|splitter|bumper|hood|roof|pr|tr)/i);
-    const candidate = modelMatch ? modelMatch[1].trim() : remainder.split(/\s+/).slice(0, 3).join(' ');
-    const model = candidate
-      .replace(/\b(front|rear|side|lip|spoiler|grille|diffuser|skirt|splitter|bumper|hood|roof|pr|tr)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    return {
-      make: foundMake,
-      model,
-      fitmentText: normalized,
-    };
-  }
-
-  private detectPartType(text: string) {
-    const normalized = (text || '').toLowerCase();
-    const patterns = [
-      ['front bumper lip', 'front bumper lip'],
-      ['front lip', 'front lip'],
-      ['rear bumper lip', 'rear bumper lip'],
-      ['side skirt', 'side skirt'],
-      ['spoiler', 'spoiler'],
-      ['splitter', 'splitter'],
-      ['grille', 'grille'],
-      ['diffuser', 'diffuser'],
-      ['roof rack', 'roof rack'],
-      ['hood', 'hood'],
-      ['mirror cover', 'mirror cover'],
-      ['valance', 'valance'],
-    ];
-
-    for (const [pattern, label] of patterns) {
-      if (normalized.includes(pattern)) return label;
-    }
-
-    return 'generic accessory';
-  }
-
-  private detectStyle(text: string) {
-    const normalized = (text || '').toLowerCase();
-    const stylePatterns = [
-      'ams',
-      'cs',
-      'tr',
-      'type r',
-      'type-r',
-      'carbon',
-      'ural',
-      'sport',
-      'style',
-      'version',
-      'lp',
-      'm performance',
-    ];
-
-    const found = stylePatterns.find((p) => normalized.includes(p));
-    return found ? found.toUpperCase() : 'standard';
-  }
-
-  private detectColor(text: string) {
-    const normalized = (text || '').toLowerCase();
-    if (normalized.includes('carbon')) return 'carbon fiber look';
-    if (normalized.includes('black')) return 'black';
-    if (normalized.includes('matte')) return 'matte';
-    if (normalized.includes('gloss')) return 'gloss';
-    if (normalized.includes('red')) return 'red';
-    if (normalized.includes('silver')) return 'silver';
-    if (normalized.includes('white')) return 'white';
-    if (normalized.includes('gray')) return 'gray';
-    if (normalized.includes('blue')) return 'blue';
-    return 'not specified';
-  }
-
-  private detectMaterial(text: string) {
-    const normalized = (text || '').toLowerCase();
-    if (normalized.includes('urethane')) return 'urethane';
-    if (normalized.includes('pp')) return 'PP';
-    if (normalized.includes('pu')) return 'PU';
-    if (normalized.includes('abs')) return 'ABS';
-    if (normalized.includes('fiberglass')) return 'fiberglass';
-    if (normalized.includes('carbon')) return 'carbon fiber';
-    if (normalized.includes('plastic')) return 'plastic';
-    if (normalized.includes('aluminum')) return 'aluminum';
-    return 'not specified';
-  }
-
   async getDataReportSkuFeatures(itemId: string) {
     const itemRows = await this.db.query<any>(
       'aisdata0',
@@ -1056,21 +922,14 @@ export class ReportService {
 
   private buildSkuFeatureObject(item: any) {
     const combined = `${item.Desc1 || ''} ${item.Desc2 || ''}`.trim();
-    const fitment = this.extractYearRange(combined) || this.extractYearRange(item.Desc1 || '') || '';
-    const makeModel = this.extractMakeModel(combined);
-
+    const features = extractProductFeatures(combined);
     return {
+      ...features,
       itemno: item.Itemno,
       desc1: item.Desc1 || '',
       desc2: item.Desc2 || '',
-      partType: this.detectPartType(combined),
-      style: this.detectStyle(combined),
-      fitmentRange: fitment,
-      make: makeModel.make,
-      model: makeModel.model,
-      fitmentText: makeModel.fitmentText,
-      color: this.detectColor(combined),
-      material: this.detectMaterial(combined),
+      fitmentText: combined,
+      productDimensions: features.dimensions,
       dimensions: {
         carton: {
           length: item.Clength ?? null,
@@ -1100,95 +959,6 @@ export class ReportService {
         desc2: item.Desc2 || '',
       },
     };
-  }
-
-  private stripHtml(text: string) {
-    return String(text || '')
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, ' and ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  private async fetchTargetPageText(targetUrl: string): Promise<string> {
-    if (!targetUrl) return '';
-    try {
-      const response = await fetch(targetUrl, {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-      });
-      if (!response.ok) return '';
-      const html = await response.text();
-      return this.stripHtml(html);
-    } catch {
-      return '';
-    }
-  }
-
-  private normalizeText(v: any) {
-    return String(v || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  }
-
-  private normalizeComparableValue(v: any) {
-    const text = this.normalizeText(v);
-    if (!text || text === 'not specified' || text === 'n/a' || text === 'na') return '';
-
-    let normalized = text;
-    const rangeMatch = normalized.match(/^(\d{1,4})\s*(?:-|to|–|~)\s*(\d{1,4})$/);
-    if (rangeMatch) {
-      const rawStart = rangeMatch[1];
-      const rawEnd = rangeMatch[2];
-      const start = Number(rawStart);
-      const end = Number(rawEnd);
-      const formatStart = rawStart.length === 2 ? (start >= 90 ? 1900 + start : 2000 + start) : start;
-      const formatEnd = rawEnd.length === 2 ? (end >= 90 ? 1900 + end : 2000 + end) : end;
-      normalized = `${formatStart}-${formatEnd}`;
-    } else {
-      normalized = text
-        .replace(/[_-]/g, ' ')
-        .replace(/\burethane\b/g, 'pu')
-        .replace(/\bpolyurethane\b/g, 'pu')
-        .replace(/\bpolypropylene\b/g, 'pp')
-        .replace(/\bpp\b/g, 'pp')
-        .replace(/\bpu\b/g, 'pu')
-        .replace(/\bfront bumper lip\b/g, 'front bumper lip')
-        .replace(/\brear bumper lip\b/g, 'rear bumper lip')
-        .replace(/\bfront lip\b/g, 'front lip')
-        .replace(/\brear lip\b/g, 'rear lip')
-        .replace(/\bside skirt\b/g, 'side skirt')
-        .replace(/\bspoiler\b/g, 'spoiler')
-        .replace(/\bgrille\b/g, 'grille')
-        .replace(/\bdiffuser\b/g, 'diffuser')
-        .replace(/\bcarbon fiber\b/g, 'carbon')
-        .replace(/\bcarbon fiber look\b/g, 'carbon')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    return normalized;
-  }
-
-  private valuesAreEquivalent(a: any, b: any) {
-    const av = this.normalizeComparableValue(a);
-    const bv = this.normalizeComparableValue(b);
-    if (!av || !bv) return true;
-    if (av === bv || av.includes(bv) || bv.includes(av)) return true;
-    return false;
-  }
-
-  private compareFeatureValues(a: any, b: any, key: string) {
-    const av = this.normalizeComparableValue(a);
-    const bv = this.normalizeComparableValue(b);
-    if (!av && !bv) return { ok: true, reason: null };
-    if (!av || !bv) return { ok: true, reason: null };
-    if (this.valuesAreEquivalent(a, b)) return { ok: true, reason: null };
-    return { ok: false, reason: `${key}: ${a} != ${b}` };
   }
 
   private normalizeKeyName(key: string) {
@@ -1228,11 +998,6 @@ export class ReportService {
       'Part Number',
       'part_number',
       'Product Number',
-      'Goods ID',
-      'goodsid',
-      'goods_id',
-      'goods no',
-      'goodsno',
       '货号',
       'Cpono',
       'cpono',
@@ -1273,9 +1038,6 @@ export class ReportService {
       '参考链接地址',
       '参考URL地址',
       'target url',
-      'result',
-      '检查结果',
-      'check result',
     ];
 
     const direct = this.getRowValue(row, candidateKeys);
@@ -1313,57 +1075,64 @@ export class ReportService {
     error?: string;
   }>();
 
-  private async analyzeSingleRow(row: Record<string, any>, fileName?: string) {
+  private evidenceDir = path.join(process.cwd(), 'tmp', 'fitment');
+
+  async getFitmentEvidence(id: string) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+    try { return gunzipSync(await fs.readFile(path.join(this.evidenceDir, `${id}.json.gz`))); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error; }
+  }
+
+  private async saveFitmentEvidence(result: any, html: string) {
+    const id = randomUUID();
+    await fs.mkdir(this.evidenceDir, { recursive: true });
+    await fs.writeFile(path.join(this.evidenceDir, `${id}.json.gz`), gzipSync(JSON.stringify({
+      ...result, htmlSha256: createHash('sha256').update(html).digest('hex'), rawHtml: html,
+    })), { flag: 'wx' });
+    return id;
+  }
+
+  private async analyzeSingleRow(row: Record<string, any>, fileName?: string, cache?: Map<string, Promise<{ page: PageEvidence; html: string }>>) {
     const sku = this.extractSkuFromRow(row);
     const targetUrl = this.extractTargetUrlFromRow(row);
-    if (!sku) {
-      return {
-        sku: '',
-        fileName,
-        verdict: 'NOT FIT',
-        confidence: 'low',
-        mismatches: ['SKU column missing from uploaded file'],
-        reason: 'SKU column missing from uploaded file',
-      };
+    const goodsId = this.getRowValue(row, ['Goods ID', 'goodsid']);
+    let page = emptyEvidence(targetUrl, 'invalid_input', '缺少 SKU 或参考链接，未进行商品判断');
+    let html = '';
+    let internal: any = null;
+    let result: any;
+    const existing = sku ? await this.getSkuByItemno(sku) : null;
+    const retrievedAt = new Date().toISOString();
+    if (!sku || !existing || !targetUrl) {
+      const reason = !sku ? '缺少 SKU' : !existing ? 'SKU 不存在于我方 AIS 数据库' : '缺少参考链接';
+      page = emptyEvidence(targetUrl, 'invalid_input', reason);
+      result = { sku, goodsId, targetUrl, fileName, verdict: 'INVALID', reason, mismatches: [], dimensions: [], confidence: 'not_calibrated', version: FITMENT_VERSION };
+    } else {
+      internal = this.buildSkuFeatureObject(existing);
+      if (cache && !cache.has(targetUrl)) {
+        if (cache.size >= 12) cache.delete(cache.keys().next().value!);
+        cache.set(targetUrl, fetchProductEvidence(targetUrl));
+      }
+      const fetched = await (cache?.get(targetUrl) || fetchProductEvidence(targetUrl));
+      page = fetched.page; html = fetched.html;
+      // No fallback to our own description. A failed page has no external features.
+      const external = extractProductFeatures(page.status === 'ok' ? page.text : '');
+      const comparison = compareProductFeatures({ ...internal, dimensions: internal.productDimensions }, external, page);
+      result = { sku, goodsId, targetUrl, fileName, ...comparison, internal, external,
+        internalSource: { schema: 'aisdata0', table: 'item', itemno: sku, retrievedAt },
+        priceReview: { status: 'needs_review', reason: '商品可比性与价格分开；需核对选中变体、优惠、运费和时间', price: page.price, currency: page.currency, availability: page.availability } };
     }
-
-    const existing = await this.getSkuByItemno(sku);
-    if (!existing) {
-      return {
-        sku,
-        fileName,
-        verdict: 'NOT FIT',
-        confidence: 'low',
-        mismatches: ['SKU not found in local AIS database'],
-        reason: 'SKU not found in local AIS database',
-      };
-    }
-
-    const itemFeatures = this.buildSkuFeatureObject(existing);
-    const externalText = targetUrl ? await this.fetchTargetPageText(targetUrl) : '';
-    const externalFeatures = this.extractTextFeatures(externalText || `${existing.Desc1 || ''} ${existing.Desc2 || ''}`);
-    const comparison = this.compareSkuFeatures(itemFeatures, externalFeatures, targetUrl);
-    const mismatches = comparison.mismatches;
-    const verdict = comparison.verdict;
-    const confidence = verdict === 'FIT' ? 'medium' : verdict === 'REVIEW' ? 'medium' : verdict === 'INVALID' ? 'low' : 'high';
-
-    return {
-      sku,
-      fileName,
-      verdict,
-      confidence,
-      mismatches,
-      reason: mismatches.length ? mismatches.join('; ') : 'No major mismatch found.',
-      internal: itemFeatures,
-      targetUrl,
-    };
+    result.page = page;
+    // Human labels are deliberately not consumed by feature extraction/comparison.
+    result.review = { status: 'pending', decision: null };
+    try { result.evidenceId = await this.saveFitmentEvidence(result, html); }
+    catch { result.evidenceError = '证据保存失败，本条必须人工复核'; result.verdict = 'REVIEW'; result.needsReview = true; result.reason += '；证据保存失败'; }
+    return result;
   }
 
   async analyzeRows(rows: Array<Record<string, any>>, fileName?: string) {
     const results = [] as any[];
-    for (const row of rows) {
-      results.push(await this.analyzeSingleRow(row, fileName));
-    }
+    const cache = new Map<string, Promise<{ page: PageEvidence; html: string }>>();
+    for (const row of rows) results.push(await this.analyzeSingleRow(row, fileName, cache));
     return { ok: true, fileName, results };
   }
 
@@ -1405,7 +1174,7 @@ export class ReportService {
       status: job.status,
       total: job.total,
       done: job.done,
-      results: job.results,
+      results: job.status === 'running' ? [] : job.results,
       error: job.error || undefined,
       message: job.status === 'failed' ? job.error || 'Analyze failed' : undefined,
     };
@@ -1414,34 +1183,25 @@ export class ReportService {
   private async runAnalyzeJob(jobId: string, rows: Array<Record<string, any>>, fileName?: string) {
     const job = this.analyzeJobs.get(jobId);
     if (!job) return;
-
-    try {
-      const results = [] as any[];
-      for (let index = 0; index < rows.length; index += 1) {
-        const row = rows[index];
-        results.push(await this.analyzeSingleRow(row, fileName));
-
-        const current = this.analyzeJobs.get(jobId);
-        if (current) {
-          current.done = index + 1;
-          current.results = results.slice();
-          current.status = current.done >= current.total ? 'done' : 'running';
+    const results: any[] = new Array(rows.length);
+    const cache = new Map<string, Promise<{ page: PageEvidence; html: string }>>();
+    let next = 0;
+    const worker = async () => {
+      while (next < rows.length) {
+        const index = next++;
+        try { results[index] = await this.analyzeSingleRow(rows[index], fileName, cache); }
+        catch (error) {
+          results[index] = { sku: this.extractSkuFromRow(rows[index]), targetUrl: this.extractTargetUrlFromRow(rows[index]), fileName,
+            verdict: 'REVIEW', confidence: 'not_calibrated', version: FITMENT_VERSION,
+            reason: `本条处理失败，需人工复核：${error instanceof Error ? error.message : String(error)}`, dimensions: [], mismatches: [] };
         }
+        job.done++;
+        job.results = results.filter(Boolean);
       }
-
-      const finished = this.analyzeJobs.get(jobId);
-      if (finished) {
-        finished.done = finished.total;
-        finished.results = results;
-        finished.status = 'done';
-      }
-    } catch (error: any) {
-      const current = this.analyzeJobs.get(jobId);
-      if (current) {
-        current.status = 'failed';
-        current.error = error?.message || 'Analyze failed';
-      }
-    }
+    };
+    try { await Promise.all(Array.from({ length: Math.min(3, rows.length) }, worker)); job.status = 'done'; }
+    catch (error) { job.status = 'failed'; job.error = error instanceof Error ? error.message : String(error); }
+    finally { cache.clear(); }
   }
 
   private async getSkuByItemno(sku: string) {
@@ -1456,96 +1216,6 @@ export class ReportService {
       [sku],
     );
     return Array.isArray(rows) && rows[0] ? rows[0] : null;
-  }
-
-  private extractTextFeatures(text: string) {
-    const source = String(text || '').toLowerCase();
-    return {
-      fitmentRange: this.extractYearRange(source) || '',
-      make: this.extractMakeModel(source).make,
-      model: this.extractMakeModel(source).model,
-      partType: this.detectPartType(source),
-      style: this.detectStyle(source),
-      color: this.detectColor(source),
-      material: this.detectMaterial(source),
-      text: source,
-    };
-  }
-
-  private compareSkuFeatures(itemFeatures: any, externalFeatures: any, targetUrl: string) {
-    const mismatches: string[] = [];
-    const hardMismatches: string[] = [];
-    const softMismatches: string[] = [];
-
-    if (!targetUrl) {
-      return {
-        verdict: 'INVALID',
-        mismatches: ['No target URL provided for fitment verification'],
-        hardMismatches: ['No target URL provided for fitment verification'],
-        softMismatches: [],
-      };
-    }
-
-    const checks = [
-      ['brand', itemFeatures.make, externalFeatures.make],
-      ['model', itemFeatures.model, externalFeatures.model],
-      ['part type', itemFeatures.partType, externalFeatures.partType],
-      ['style', itemFeatures.style, externalFeatures.style],
-      ['color', itemFeatures.color, externalFeatures.color],
-      ['material', itemFeatures.material, externalFeatures.material],
-    ] as const;
-
-    for (const [key, itemValue, externalValue] of checks) {
-      const itemText = this.normalizeComparableValue(itemValue);
-      const externalText = this.normalizeComparableValue(externalValue);
-      if (!itemText || !externalText) continue;
-      const result = this.compareFeatureValues(itemValue, externalValue, key);
-      if (!result.ok) {
-        const reason = result.reason || `${key} mismatch`;
-        if (['style', 'color', 'material', 'part type'].includes(key)) {
-          softMismatches.push(reason);
-        } else {
-          hardMismatches.push(reason);
-        }
-      }
-    }
-
-    const itemFitRange = this.normalizeComparableValue(itemFeatures.fitmentRange || '');
-    const externalFitRange = this.normalizeComparableValue(externalFeatures.fitmentRange || '');
-    if (itemFitRange && externalFitRange) {
-      const fitmentCheck = this.compareFeatureValues(itemFeatures.fitmentRange, externalFeatures.fitmentRange, 'fitment range');
-      if (!fitmentCheck.ok) {
-        const reason = fitmentCheck.reason || 'year/fitment range mismatch';
-        hardMismatches.push(reason);
-      }
-    }
-
-    if (hardMismatches.length) {
-      mismatches.push(...hardMismatches, ...softMismatches);
-      return {
-        verdict: 'NOT FIT',
-        mismatches,
-        hardMismatches,
-        softMismatches,
-      };
-    }
-
-    if (softMismatches.length) {
-      mismatches.push(...softMismatches);
-      return {
-        verdict: 'REVIEW',
-        mismatches,
-        hardMismatches,
-        softMismatches,
-      };
-    }
-
-    return {
-      verdict: 'FIT',
-      mismatches: [],
-      hardMismatches: [],
-      softMismatches: [],
-    };
   }
 
   private async ikonBin(): Promise<{ file: string }> {

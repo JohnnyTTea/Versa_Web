@@ -43,6 +43,16 @@ export class ReportController {
     return await this.reports.analyzeRows(rows, body?.fileName || 'uploaded-data');
   }
 
+  @Get('data/analyze/evidence')
+  async fitmentEvidence(@Query('id') id: string, @Res() res: Response) {
+    const evidence = await this.reports.getFitmentEvidence(id || '');
+    if (!evidence) return res.status(404).json({ message: 'Evidence not found' });
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="sku-fitment-evidence-${id}.json"`);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.send(evidence);
+  }
+
   @Get('data/analyze/progress')
   async analyzeProgress(@Query('jobId') jobId?: string) {
     if (!jobId) {
