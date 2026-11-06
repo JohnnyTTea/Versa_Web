@@ -47,27 +47,9 @@ export default function Warehouse() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const trackingNo = tracking.trim();
+    const trackingNo = tracking.replace(/\s+/g, "").toUpperCase();
     if (!trackingNo) {
       setLoginError("Please enter a tracking number.");
-      setSuccessMessage("");
-      return;
-    }
-
-    const normalized = trackingNo.toUpperCase().replace(/\s+/g, " ");
-    const compact = normalized.replace(/[^A-Z0-9]/g, "");
-    const pureNumeric = /^\d+$/.test(compact);
-    const validTracking = /^(?=.{8,35}$)[A-Z0-9][A-Z0-9 -]*$/.test(normalized)
-      && compact.length >= 8
-      && (
-        /[A-Z]/.test(compact)
-        || /[-\s]/.test(normalized)
-        || compact.length >= 12
-        || (pureNumeric && (compact.length === 10 || compact.length === 12 || compact.length === 14))
-      );
-
-    if (!validTracking) {
-      setLoginError("Only tracking numbers are allowed. Please scan a valid tracking number.");
       setSuccessMessage("");
       return;
     }
@@ -86,7 +68,7 @@ export default function Warehouse() {
 
       const data = await res.json();
       if (!res.ok) {
-        setLoginError(data?.message || "Only tracking numbers are allowed. Please scan a valid tracking number.");
+        setLoginError(data?.message || "Unable to save pack record.");
         return;
       }
 

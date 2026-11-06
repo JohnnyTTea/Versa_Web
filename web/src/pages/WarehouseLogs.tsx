@@ -70,7 +70,7 @@ export default function WarehouseLogs() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.message || "Unable to load warehouse log");
+        throw new Error(data?.message || "Unable to load packer log");
       }
 
       if (signal?.aborted) return;
@@ -78,7 +78,7 @@ export default function WarehouseLogs() {
       setSummary(Array.isArray(data?.summary) ? data.summary : []);
     } catch (err) {
       if (signal?.aborted) return;
-      setError(err instanceof Error ? err.message : "Unable to load warehouse log");
+      setError(err instanceof Error ? err.message : "Unable to load packer log");
       setRecords([]);
       setSummary([]);
     } finally {
@@ -123,7 +123,7 @@ export default function WarehouseLogs() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `warehouse-log-${date}${usernameFilter ? `-${usernameFilter}` : ""}.csv`;
+    a.download = `packer-log-${date}${usernameFilter ? `-${usernameFilter}` : ""}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -141,7 +141,7 @@ export default function WarehouseLogs() {
             <div style={{ fontSize: 12, letterSpacing: 1.1, textTransform: "uppercase", color: "#475569", fontWeight: 700 }}>
               Warehouse
             </div>
-            <h2 style={{ margin: 0, fontSize: 30, color: "#0f172a" }}>Packer Activity Log</h2>
+            <h2 style={{ margin: 0, fontSize: 30, color: "#0f172a" }}>Packer Log</h2>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -264,24 +264,24 @@ export default function WarehouseLogs() {
             Record list
           </div>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", minWidth: 720, margin: "0 auto", borderCollapse: "collapse" }}>
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
-                  <th style={{ textAlign: "left", padding: "10px 12px", color: "#334155", fontSize: 12 }}>User</th>
-                  <th style={{ textAlign: "left", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Tracking Number</th>
-                  <th style={{ textAlign: "left", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Ship Via</th>
-                  <th style={{ textAlign: "left", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Freight</th>
-                  <th style={{ textAlign: "left", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Packed At</th>
+                  <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>User</th>
+                  <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Tracking Number</th>
+                  <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Ship Via</th>
+                  <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Freight</th>
+                  <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Packed At</th>
                 </tr>
               </thead>
               <tbody>
                 {records.length ? records.map((row, index) => (
                   <tr key={`${row.username}-${row.tracking_number}-${row.packed_at}-${index}`} style={{ borderTop: "1px solid #e2e8f0" }}>
-                    <td style={{ padding: "10px 12px", color: "#0f172a" }}>{row.username}</td>
-                    <td style={{ padding: "10px 12px", color: "#0f172a", fontWeight: 600 }}>{row.tracking_number}</td>
-                    <td style={{ padding: "10px 12px", color: "#475569" }}>{row.shipvia || "—"}</td>
-                    <td style={{ padding: "10px 12px", color: "#475569" }}>{row.freight || "—"}</td>
-                    <td style={{ padding: "10px 12px", color: "#475569" }}>{new Date(row.packed_at).toLocaleString()}</td>
+                    <td style={{ textAlign: "center", verticalAlign: "middle", padding: "10px 12px", color: "#0f172a" }}>{row.username}</td>
+                    <td style={{ textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap", padding: "10px 12px", color: "#0f172a", fontWeight: 600 }}>{row.tracking_number}</td>
+                    <td style={{ textAlign: "center", verticalAlign: "middle", padding: "10px 12px", color: "#475569" }}>{row.shipvia || "—"}</td>
+                    <td style={{ textAlign: "center", verticalAlign: "middle", padding: "10px 12px", color: "#475569" }}>{row.freight || "—"}</td>
+                    <td style={{ textAlign: "center", verticalAlign: "middle", padding: "10px 12px", color: "#475569" }}>{new Date(row.packed_at).toLocaleString()}</td>
                   </tr>
                 )) : (
                   <tr>

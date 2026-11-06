@@ -16,8 +16,9 @@ export class WarehouseService {
     { prefix: '08', len: 20, shipvia: 'GLS US', freight: 'CPS' },
     { prefix: '09', len: 20, shipvia: 'GLS US', freight: 'CPS' },
     { prefix: '10', len: 20, shipvia: 'GLS US', freight: 'CPS' },
+    { prefix: '11', len: 20, shipvia: 'GLS US', freight: 'CPS' },
     { prefix: '12', len: 20, shipvia: 'GLS US', freight: 'CPS' },
-    { prefix: '12', len: 18, shipvia: 'UPS', freight: 'GROUND' },
+    { prefix: '1Z', len: 18, shipvia: 'UPS', freight: 'GROUND' },
     { prefix: '27', len: 12, shipvia: 'FEDEX', freight: 'GROUND' },
     { prefix: '28', len: 12, shipvia: 'FEDEX', freight: 'GROUND' },
     { prefix: '37', len: 9, shipvia: 'Pilot freight', freight: 'Economy' },
@@ -36,32 +37,42 @@ export class WarehouseService {
     { prefix: '92', len: 22, shipvia: 'USPS', freight: 'PRIORITY' },
     { prefix: '93', len: 22, shipvia: 'AMZSHIPPING', freight: 'STANDARDDELIVERY' },
     { prefix: '94', len: 22, shipvia: 'USPS', freight: 'PRIORITY' },
-    { prefix: 'CJ', len: 13, shipvia: 'USPS', freight: 'PRIORITY' },
-    { prefix: 'CJ', len: 22, shipvia: 'USPS', freight: 'PRIORITY' },
+    { prefix: 'CJ', len: 13, shipvia: 'USPS', freight: 'IPRIORITY' },
+    { prefix: 'CJ', len: 22, shipvia: 'USPS', freight: 'IPRIORITY' },
     { prefix: 'D1', len: 15, shipvia: 'OnTrac', freight: 'Ground' },
     { prefix: 'GL', len: 19, shipvia: 'GLS US', freight: 'CPS' },
     { prefix: 'GL', len: 20, shipvia: 'GLS US', freight: 'CPS' },
     { prefix: 'GP', len: 18, shipvia: 'GlobalPost', freight: 'StandardIntl' },
-    { prefix: 'HT', len: 22, shipvia: 'USPS', freight: 'PRIORITY' },
-    { prefix: 'LN', len: 22, shipvia: 'USPS', freight: 'PRIORITY' },
-    { prefix: 'LZ', len: 22, shipvia: 'USPS', freight: 'PRIORITY' },
+    { prefix: 'HJ', len: 22, shipvia: 'USPS', freight: 'IPRIORITY' },
+    { prefix: 'LN', len: 22, shipvia: 'USPS', freight: 'IFIRSTCLASS' },
+    { prefix: 'LZ', len: 22, shipvia: 'USPS', freight: 'IFIRSTCLASS' },
     { prefix: 'TB', len: 15, shipvia: 'AMZSHIPPING', freight: 'STANDARDDELIVERY' },
-    { prefix: 'UA', len: 22, shipvia: 'USPS', freight: 'PRIORITY' },
+    { prefix: 'UA', len: 22, shipvia: 'USPS', freight: 'IPRIORITY' },
   ];
 
   private normalizeTrackingNumber(input?: string) {
-    return String(input ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+    const value = String(input ?? '').replace(/\s+/g, '').toUpperCase();
+
+    // FedEx 1D: 34 numeric characters starting with 96; positions 21–34
+    // hold the tracking number, with two leading zeros for a 12-digit number.
+    if (/^96\d{32}$/.test(value)) {
+      const trackingField = value.slice(20);
+      const tracking = trackingField.startsWith('00') ? trackingField.slice(2) : trackingField;
+      const matchesFedex = this.trackingPolicy.some((rule) =>
+        rule.shipvia === 'FEDEX' && rule.prefix === tracking.slice(0, 2) && rule.len === tracking.length,
+      );
+      if (matchesFedex) return tracking;
+    }
+
+    return value;
   }
 
   private getTrackingClassification(input?: string) {
     const value = this.normalizeTrackingNumber(input);
     if (!value) return null;
 
-    const compact = value.replace(/[^A-Z0-9]/g, '');
-    if (!compact || compact.length < 7) return null;
-
-    const prefix2 = compact.slice(0, 2).toUpperCase();
-    const len = compact.length;
+    const prefix2 = value.slice(0, 2);
+    const len = value.length;
     const match = this.trackingPolicy.find((rule) => rule.prefix === prefix2 && rule.len === len);
     if (!match) return null;
 
@@ -70,28 +81,6 @@ export class WarehouseService {
       freight: match.freight,
       tracking_number: value,
     };
-  }
-
-  private isTrackingNumber(input?: string) {
-    const value = this.normalizeTrackingNumber(input);
-    if (!value) return false;
-    if (value.length < 8 || value.length > 35) return false;
-    if (!/^[A-Z0-9][A-Z0-9 -]*$/.test(value)) return false;
-
-    const compact = value.replace(/[^A-Z0-9]/g, '');
-    if (compact.length < 8) return false;
-
-    const classification = this.getTrackingClassification(value);
-    if (classification) return true;
-
-    const knownPrefixes = ['1Z', '94', 'EA', 'LX', 'LS', 'SF', 'CP', 'CC', 'JD', 'RT', 'CA', 'US', 'UP', 'T'];
-    const hasKnownCarrierPrefix = knownPrefixes.some((prefix) => value.startsWith(prefix));
-    const hasSeparator = /[-\s]/.test(value);
-    const pureNumeric = /^\d+$/.test(compact);
-    const numericFedexLike = pureNumeric && (compact.length === 10 || compact.length === 12 || compact.length === 14);
-    const longEnough = compact.length >= 12;
-
-    return hasKnownCarrierPrefix || hasSeparator || longEnough || numericFedexLike;
   }
 
   private async ensurePackerTable() {
@@ -139,8 +128,8 @@ export class WarehouseService {
     }
 
     const classification = this.getTrackingClassification(trackingNumber);
-    if (!classification || !this.isTrackingNumber(trackingNumber)) {
-      throw new BadRequestException('Only tracking numbers are allowed. Please scan a valid tracking number.');
+    if (!classification) {
+      throw new BadRequestException('Tracking prefix and length do not match the configured rules.');
     }
 
     await this.ensurePackerTable();

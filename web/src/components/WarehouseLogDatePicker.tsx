@@ -42,7 +42,7 @@ export default function WarehouseLogDatePicker({ dates, value, loading, onChange
         {loading ? "Loading dates…" : value}<span aria-hidden="true"> ▾</span>
       </summary>
       {activeMonth && (
-        <div className="warehouse-log-calendar" role="group" aria-label="Warehouse log calendar">
+        <div className="warehouse-log-calendar" role="group" aria-label="Packer log calendar">
           <div className="warehouse-log-calendar-nav">
             <button type="button" aria-label="Previous month" disabled={activeMonth === "0001-01"} onClick={() => shiftMonth(-1)}>‹</button>
             <input type="month" aria-label="Calendar month" min="0001-01" max="9999-12" value={activeMonth}
