@@ -53,6 +53,13 @@ export class WarehouseService {
   private normalizeTrackingNumber(input?: string) {
     const value = String(input ?? '').replace(/\s+/g, '').toUpperCase();
 
+    // USPS concatenated barcode: AI 420 + ZIP (5 or 9 digits) + tracking.
+    // Strip routing only for the 22-digit postal prefixes in our policy;
+    // keep the existing carrier mapping (including 93) for the extracted number.
+    // Some scanners transmit the GS separator after the variable-length ZIP.
+    const postalBarcode = /^420(?:\d{5}|\d{9})\x1d?(9[234]\d{20})$/.exec(value);
+    if (postalBarcode) return postalBarcode[1];
+
     // FedEx 1D: 34 numeric characters starting with 96; positions 21–34
     // hold the tracking number, with two leading zeros for a 12-digit number.
     if (/^96\d{32}$/.test(value)) {

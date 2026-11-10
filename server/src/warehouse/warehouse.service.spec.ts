@@ -63,6 +63,44 @@ describe('warehouse scan rules', () => {
   });
 
   it.each([
+    ['4209250437069434650105497049745912', '9434650105497049745912', 'USPS', 'PRIORITY'],
+    // Decoded from the supplied USPS PDF (pages 1/2) and FedEx+UPS PDF (page 1).
+    ['4200681079309434650105800049505187', '9434650105800049505187', 'USPS', 'PRIORITY'],
+    ['4200600233139434650105496050218583', '9434650105496050218583', 'USPS', 'PRIORITY'],
+    ['420300059261290983197871538358', '9261290983197871538358', 'USPS', 'PRIORITY'],
+    ['420925043706\x1d9434650105497049745912', '9434650105497049745912', 'USPS', 'PRIORITY'],
+    ['42030005\x1d9261290983197871538358', '9261290983197871538358', 'USPS', 'PRIORITY'],
+    ['420925049434650105497049745912', '9434650105497049745912', 'USPS', 'PRIORITY'],
+    [' \t420 925043706 9434650105497049745912\r\n', '9434650105497049745912', 'USPS', 'PRIORITY'],
+    ['420925049234650105497049745912', '9234650105497049745912', 'USPS', 'PRIORITY'],
+    ['4209250437069234650105497049745912', '9234650105497049745912', 'USPS', 'PRIORITY'],
+    ['420925049334650105497049745912', '9334650105497049745912', 'AMZSHIPPING', 'STANDARDDELIVERY'],
+    ['4209250437069334650105497049745912', '9334650105497049745912', 'AMZSHIPPING', 'STANDARDDELIVERY'],
+  ])('saves routed postal barcode %s with the same key as its tracking number', async (barcode, tracking, shipvia, freight) => {
+    const { query, service } = setup();
+    for (const input of [barcode, tracking]) {
+      await expect(service.recordScan({ user_id: 1, username: 'packer', tracking_number: input }))
+        .resolves.toMatchObject({ ok: true, tracking_number: tracking, shipvia, freight });
+    }
+    const inserts = query.mock.calls.filter((call) => call[1].includes('INSERT IGNORE'));
+    expect(inserts).toHaveLength(2);
+    for (const call of inserts) {
+      expect(call).toEqual(['data0', expect.stringContaining('INSERT IGNORE'),
+        [1, 'packer', tracking, shipvia, freight]]);
+    }
+  });
+
+  it.each([
+    '42092504943465010549704974591', // Truncated tracking.
+    '4209250494346501054970497459120', // Extra digit.
+    '421925049434650105497049745912', // Wrong routing identifier.
+    '4209250A9434650105497049745912', // Non-numeric ZIP.
+    '42092504943465010549704974591A', // Non-numeric tracking.
+    '42092504009434650105497049745912', // Unsupported ZIP length.
+    '420925048434650105497049745912', // Unconfigured postal prefix.
+    '42092504', // Routing-only barcode has no tracking.
+    '420925043706\x1d\x1d9434650105497049745912', // Repeated separator.
+    '42092504943465010549\x1d7049745912', // Separator inside tracking.
     '12586Y510334216632', // Old UPS prefix is no longer configured at this length.
     'HT00000000000000000000', // Replaced by HJ.
     '96320804000000000000879764057040', // Not a 34-digit FedEx barcode.
