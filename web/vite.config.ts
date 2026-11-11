@@ -21,7 +21,9 @@ function omitBuiltAnnouncements(): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiTarget = env.VITE_API_TARGET || 'http://127.0.0.1:3000'
-  const basePath = env.VITE_BASE_PATH || './'
+  // BrowserRouter is mounted at /Versa. Relative asset URLs break deep-link refreshes.
+  const configuredBase = env.VITE_BASE_PATH || '/Versa/'
+  const basePath = configuredBase === './' ? '/Versa/' : configuredBase
 
   return {
     plugins: [react(), omitBuiltAnnouncements()],

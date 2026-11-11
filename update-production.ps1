@@ -46,17 +46,12 @@ New-Item -ItemType Directory -Force -Path $serverLogDir | Out-Null
 Step "Pull latest code"
 Run "git pull origin main" $ProjectDir
 
-Step "Install web dependencies"
-Run "npm ci --include=dev" $webDir
-
 Step "Build web"
 Run "npm run build" $webDir
 
-Step "Install server dependencies"
-Run "npm ci --include=dev" $serverDir
-
 Step "Build server"
-Run "npm run build" $serverDir
+# Reuse the compiler that just built web successfully.
+Run "node ../web/node_modules/typescript/bin/tsc -p tsconfig.build.json --incremental false --noEmitOnError" $serverDir
 
 Step "Stop old server process on port $ServerPort"
 function Get-ServerProcessIds {
