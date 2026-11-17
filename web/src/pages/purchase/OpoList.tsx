@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import * as XLSX from "xlsx";
 import "../../styles/purchase.css";
 import { trackUserEvent } from "../../utils/userLog";
 
@@ -81,6 +82,8 @@ export default function OpoList() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
+  const [exportError, setExportError] = useState("");
   const pageSize = 15;
   const [sort, setSort] = useState<{ key: keyof OpoRow | null; dir: "asc" | "desc" }>(() => {
     try {
@@ -275,7 +278,7 @@ export default function OpoList() {
     }
   }, [sort]);
 
-  const rowKey = (row: OpoRow, idx: number) => `${row.Opono ?? ""}-${row.Contno ?? ""}-${idx}`;
+  const rowKey = (row: OpoRow) => JSON.stringify([row.Opono, row.Contno]);
 
   const getSortValue = (row: OpoRow, key: keyof OpoRow) => {
     const v = row[key];
@@ -327,15 +330,15 @@ export default function OpoList() {
   const pageRows = sortedRows.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   const allPageSelected =
-    pageRows.length > 0 && pageRows.every((row, idx) => selected.has(rowKey(row, idx)));
+    pageRows.length > 0 && pageRows.every((row) => selected.has(rowKey(row)));
 
   const toggleSelectAll = (checked: boolean) => {
     setSelected((prev) => {
       const next = new Set(prev);
       if (checked) {
-        pageRows.forEach((row, idx) => next.add(rowKey(row, idx)));
+        pageRows.forEach((row) => next.add(rowKey(row)));
       } else {
-        pageRows.forEach((row, idx) => next.delete(rowKey(row, idx)));
+        pageRows.forEach((row) => next.delete(rowKey(row)));
       }
       return next;
     });
@@ -359,105 +362,132 @@ export default function OpoList() {
     });
   };
 
+  const selectedResults = sortedRows.filter((row) => selected.has(rowKey(row)));
+  const exportResults = () => {
+    try {
+      const exportRows = selectedResults.length ? selectedResults : sortedRows;
+      const dates = new Set<keyof OpoRow>(["Opodate", "Shdate", "Eadate", "Cadate"]);
+      const data = [
+        visibleColumnDefs.map((column) => column.label),
+        ...exportRows.map((row) => visibleColumnDefs.map(({ key }) =>
+          dates.has(key) ? formatDate(row[key]) : row[key] ?? "",
+        )),
+      ];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(data), "OPO Orders");
+      XLSX.writeFile(workbook, "OPO_Orders.xlsx");
+      setExportError("");
+    } catch {
+      setExportError("Export failed. Please try again.");
+    }
+  };
+
   return (
-    <div className="purchase-page progressive-enter">
+    <div className="purchase-page progressive-enter purchase-filter-popover">
       <div className="purchase-toolbar">
         <div className="purchase-toolbar-title">OPO List</div>
         <div className="purchase-toolbar-actions">
-
+          <button className="purchase-btn" type="button" aria-expanded={showFilters} aria-controls="opo-filters" onClick={() => setShowFilters((previous) => !previous)}>
+            Filter {showFilters ? "▲" : "▼"}
+          </button>
+          <button className="purchase-btn" type="button" disabled={loading || !sortedRows.length || !visibleColumnDefs.length} onClick={exportResults} title="Export visible columns for selected matching rows, or all filtered results when none are selected.">
+            {selectedResults.length ? `Export Selected (${selectedResults.length})` : "Export"}
+          </button>
         </div>
       </div>
-
+      {exportError ? <div className="message-box" role="alert">{exportError}</div> : null}
       <div className="purchase-layout">
         <div className="purchase-table-wrapper">
           {err ? <div className="message-box">{err}</div> : null}
-          <table className="purchase-table">
-            <thead>
-              <tr>
-                <th style={{ width: 30 }}>
-                  <input
-                    type="checkbox"
-                    checked={allPageSelected}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
-                  />
-                </th>
-                <th style={{ width: 30 }}>#</th>
-                {visibleColumnDefs.map((col) => (
-                  <th
-                    key={col.key}
-                    className="opo-sortable-th"
-                    onClick={() => toggleSort(col.key)}
-                    title="Sort"
-                  >
-                    {col.label}
-                    {sort.key === col.key ? (
-                      <span className="opo-sort-indicator">
-                        {sort.dir === "asc" ? " ▲" : " ▼"}
-                      </span>
-                    ) : null}
-                  </th>
-                ))}
-              </tr>
-              <tr className="purchase-search-row">
-                <th />
-                <th />
-                {visibleColumnDefs.map((col) => (
-                  <th key={col.key}>
+          <div className="purchase-table-scroll">
+            <table className="purchase-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 30 }}>
                     <input
-                      className="purchase-search-input"
-                      placeholder="Search"
-                      value={filters[col.key as string] || ""}
-                      onChange={(e) =>
-                        setFilters((prev) => ({ ...prev, [col.key]: e.target.value }))
-                      }
+                      type="checkbox"
+                      checked={allPageSelected}
+                      onChange={(e) => toggleSelectAll(e.target.checked)}
                     />
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
-                    加载中...
-                  </td>
+                  <th style={{ width: 30 }}>#</th>
+                  {visibleColumnDefs.map((col) => (
+                    <th
+                      key={col.key}
+                      className="opo-sortable-th"
+                      onClick={() => toggleSort(col.key)}
+                      title="Sort"
+                    >
+                      {col.label}
+                      {sort.key === col.key ? (
+                        <span className="opo-sort-indicator">
+                          {sort.dir === "asc" ? " ▲" : " ▼"}
+                        </span>
+                      ) : null}
+                    </th>
+                  ))}
                 </tr>
-              ) : pageRows.length ? (
-                pageRows.map((row, idx) => {
-                  const key = rowKey(row, idx);
-                  const isOpen = !!expanded[key];
-                  return (
-                    <tr key={key}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(key)}
-                          onChange={(e) => toggleRow(key, e.target.checked)}
-                        />
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {(safePage - 1) * pageSize + idx + 1}
-                      </td>
-                      {visibleColumnDefs.map((col) => {
-                        const cell = col.render
-                          ? col.render(row, key, isOpen, () =>
-                              setExpanded((prev) => ({ ...prev, [key]: !prev[key] })),
-                            )
-                          : (row[col.key] ?? "");
-                        return <td key={col.key}>{cell}</td>;
-                      })}
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
-                    无数据
-                  </td>
+                <tr className="purchase-search-row">
+                  <th />
+                  <th />
+                  {visibleColumnDefs.map((col) => (
+                    <th key={col.key}>
+                      <input
+                        className="purchase-search-input"
+                        placeholder="Search"
+                        value={filters[col.key as string] || ""}
+                        onChange={(e) =>
+                          setFilters((prev) => ({ ...prev, [col.key]: e.target.value }))
+                        }
+                      />
+                    </th>
+                  ))}
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
+                      加载中...
+                    </td>
+                  </tr>
+                ) : pageRows.length ? (
+                  pageRows.map((row, idx) => {
+                    const key = rowKey(row);
+                    const isOpen = !!expanded[key];
+                    return (
+                      <tr key={key}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(key)}
+                            onChange={(e) => toggleRow(key, e.target.checked)}
+                          />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {(safePage - 1) * pageSize + idx + 1}
+                        </td>
+                        {visibleColumnDefs.map((col) => {
+                          const cell = col.render
+                            ? col.render(row, key, isOpen, () =>
+                                setExpanded((prev) => ({ ...prev, [key]: !prev[key] })),
+                              )
+                            : (row[col.key] ?? "");
+                          return <td key={col.key}>{cell}</td>;
+                        })}
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
+                      无数据
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
           <div className="opo-pagination">
             <div className="opo-pagination-center">
               <button
@@ -499,8 +529,8 @@ export default function OpoList() {
           </div>
         </div>
 
-        <aside className="purchase-filter-panel">
-          <div className="purchase-filter-title">FILTER</div>
+        {showFilters ? <aside className="purchase-filter-panel" id="opo-filters">
+          <div className="purchase-filter-title">COLUMNS</div>
           <ul className="purchase-filter-list">
             {allColumnDefs.map((col) => (
               <li key={col.key}>
@@ -515,7 +545,7 @@ export default function OpoList() {
               </li>
             ))}
           </ul>
-        </aside>
+        </aside> : null}
       </div>
     </div>
   );

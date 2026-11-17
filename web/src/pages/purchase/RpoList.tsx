@@ -88,6 +88,7 @@ export default function RpoList() {
   const [rows, setRows] = useState<RpoRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
   const pageSize = 50;
   const [sort, setSort] = useState<{ key: keyof RpoRow | null; dir: "asc" | "desc" }>({
     key: null,
@@ -320,12 +321,12 @@ export default function RpoList() {
   };
 
   return (
-    <div className="purchase-page progressive-enter">
+    <div className="purchase-page progressive-enter purchase-filter-popover">
       <div className="purchase-toolbar">
         <div className="purchase-toolbar-title">RPO List</div>
         <div className="purchase-toolbar-actions">
-          <button className="purchase-btn" type="button">
-            FILTER▼
+          <button className="purchase-btn" type="button" aria-expanded={showFilters} aria-controls="rpo-filters" onClick={() => setShowFilters((previous) => !previous)}>
+            Filter {showFilters ? "▲" : "▼"}
           </button>
           <button className="purchase-btn" type="button">
             EXPORT
@@ -336,88 +337,90 @@ export default function RpoList() {
       <div className="purchase-layout">
         <div className="purchase-table-wrapper">
           {err ? <div className="message-box">{err}</div> : null}
-          <table className="purchase-table">
-            <thead>
-              <tr>
-                <th style={{ width: 30 }}>
-                  <input
-                    type="checkbox"
-                    checked={allPageSelected}
-                    onChange={(e) => toggleSelectAll(e.target.checked)}
-                  />
-                </th>
-                <th style={{ width: 30 }}>#</th>
-                {visibleColumnDefs.map((col) => (
-                  <th
-                    key={col.key}
-                    className="opo-sortable-th"
-                    onClick={() => toggleSort(col.key)}
-                    title="Sort"
-                  >
-                    {col.label}
-                    {sort.key === col.key ? (
-                      <span className="opo-sort-indicator">
-                        {sort.dir === "asc" ? " ▲" : " ▼"}
-                      </span>
-                    ) : null}
-                  </th>
-                ))}
-              </tr>
-              <tr className="purchase-search-row">
-                <th />
-                <th />
-                {visibleColumnDefs.map((col) => (
-                  <th key={col.key}>
+          <div className="purchase-table-scroll">
+            <table className="purchase-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 30 }}>
                     <input
-                      className="purchase-search-input"
-                      placeholder="Search"
-                      value={filters[col.key as string] || ""}
-                      onChange={(e) =>
-                        setFilters((prev) => ({ ...prev, [col.key]: e.target.value }))
-                      }
+                      type="checkbox"
+                      checked={allPageSelected}
+                      onChange={(e) => toggleSelectAll(e.target.checked)}
                     />
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
-                    加载中...
-                  </td>
+                  <th style={{ width: 30 }}>#</th>
+                  {visibleColumnDefs.map((col) => (
+                    <th
+                      key={col.key}
+                      className="opo-sortable-th"
+                      onClick={() => toggleSort(col.key)}
+                      title="Sort"
+                    >
+                      {col.label}
+                      {sort.key === col.key ? (
+                        <span className="opo-sort-indicator">
+                          {sort.dir === "asc" ? " ▲" : " ▼"}
+                        </span>
+                      ) : null}
+                    </th>
+                  ))}
                 </tr>
-              ) : pageRows.length ? (
-                pageRows.map((row, idx) => {
-                  const key = rowKey(row, idx);
-                  return (
-                    <tr key={key}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(key)}
-                          onChange={(e) => toggleRow(key, e.target.checked)}
-                        />
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        {(safePage - 1) * pageSize + idx + 1}
-                      </td>
-                      {visibleColumnDefs.map((col) => {
-                        const cell = col.render ? col.render(row) : (row[col.key] ?? "");
-                        return <td key={col.key}>{cell}</td>;
-                      })}
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
-                    无数据
-                  </td>
+                <tr className="purchase-search-row">
+                  <th />
+                  <th />
+                  {visibleColumnDefs.map((col) => (
+                    <th key={col.key}>
+                      <input
+                        className="purchase-search-input"
+                        placeholder="Search"
+                        value={filters[col.key as string] || ""}
+                        onChange={(e) =>
+                          setFilters((prev) => ({ ...prev, [col.key]: e.target.value }))
+                        }
+                      />
+                    </th>
+                  ))}
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
+                      加载中...
+                    </td>
+                  </tr>
+                ) : pageRows.length ? (
+                  pageRows.map((row, idx) => {
+                    const key = rowKey(row, idx);
+                    return (
+                      <tr key={key}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selected.has(key)}
+                            onChange={(e) => toggleRow(key, e.target.checked)}
+                          />
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          {(safePage - 1) * pageSize + idx + 1}
+                        </td>
+                        {visibleColumnDefs.map((col) => {
+                          const cell = col.render ? col.render(row) : (row[col.key] ?? "");
+                          return <td key={col.key}>{cell}</td>;
+                        })}
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={visibleColumnDefs.length + 2} style={{ textAlign: "center" }}>
+                      无数据
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
           <div className="opo-pagination">
             <div className="opo-pagination-center">
               <button
@@ -459,8 +462,8 @@ export default function RpoList() {
           </div>
         </div>
 
-        <aside className="purchase-filter-panel">
-          <div className="purchase-filter-title">FILTER</div>
+        {showFilters ? <aside className="purchase-filter-panel" id="rpo-filters">
+          <div className="purchase-filter-title">COLUMNS</div>
           <ul className="purchase-filter-list">
             {allColumnDefs.map((col) => (
               <li key={col.key}>
@@ -475,7 +478,7 @@ export default function RpoList() {
               </li>
             ))}
           </ul>
-        </aside>
+        </aside> : null}
       </div>
     </div>
   );

@@ -1,107 +1,144 @@
-import { useParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useParams } from "react-router-dom";
 import "../../styles/purchase.css";
-import { fpoDetailLines } from "./mock";
-
-const header = {
-  fpoNo: "10004",
-  whse: "CA",
-  fpoDate: "2025-11-01",
-  fpoPcs: 770,
-  vend1: "BMC-TAIWEI",
-  forecastBy: "user 001",
-  amount: 4100,
-  vend2: "WKD",
-  confirmedBy: "admin 001",
-};
+import {
+  exportOrders,
+  lineAmount,
+  loadOrders,
+  money,
+  orderAmount,
+  remainingQty,
+} from "./fpoData";
 
 export default function FpoDetail() {
   const { fpoNo } = useParams();
-  const displayNo = fpoNo || header.fpoNo;
-
+  const [data] = useState(() => {
+    try {
+      return { orders: loadOrders(), error: "" };
+    } catch (error) {
+      return {
+        orders: [],
+        error:
+          error instanceof Error ? error.message : "Unable to load FPO orders.",
+      };
+    }
+  });
+  const [error, setError] = useState("");
+  const order = data.orders.find((entry) => entry.fpoNo === fpoNo);
   return (
-    <div className="purchase-page progressive-enter">
+    <div className="purchase-page progressive-enter fpo-page">
       <div className="purchase-toolbar">
         <div className="purchase-toolbar-title">FPO Detail</div>
         <div className="purchase-toolbar-actions">
-          <button className="purchase-btn" type="button">
-            EXPORT
-          </button>
+          <Link className="purchase-btn ghost" to="/purchase">
+            Back to List
+          </Link>
+          {order ? (
+            <button
+              className="purchase-btn"
+              type="button"
+              onClick={() => {
+                try {
+                  exportOrders([order], `FPO_${order.fpoNo}.xlsx`);
+                  setError("");
+                } catch {
+                  setError("Export failed. Please try again.");
+                }
+              }}
+            >
+              Export Order
+            </button>
+          ) : null}
         </div>
       </div>
-
-      <div className="purchase-summary-box">
-        <table className="purchase-summary-table">
-          <tbody>
-            <tr>
-              <th>FPO No.</th>
-              <td>{displayNo}</td>
-              <th>Whse</th>
-              <td>{header.whse}</td>
-              <th>FPO Date</th>
-              <td>{header.fpoDate}</td>
-            </tr>
-            <tr>
-              <th>FPO PCS</th>
-              <td>{header.fpoPcs}</td>
-              <th>Vend. ID 1</th>
-              <td>{header.vend1}</td>
-              <th>Forecast By</th>
-              <td>{header.forecastBy}</td>
-            </tr>
-            <tr>
-              <th>FPO Amount</th>
-              <td>{`$${header.amount.toFixed(2)}`}</td>
-              <th>Vend. ID 2</th>
-              <td>{header.vend2}</td>
-              <th>Confirmed By</th>
-              <td>{header.confirmedBy}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <table className="purchase-detail-table">
-        <thead>
-          <tr>
-            <th>Ln.</th>
-            <th>ITEM ID</th>
-            <th>ITEM Desc. 1</th>
-            <th>预计数量</th>
-            <th>出货数量</th>
-            <th>到货数量</th>
-            <th>剩余数量</th>
-            <th>预计单价</th>
-            <th>预计金额</th>
-            <th>当前单价</th>
-            <th>当前金额</th>
-            <th>最终单价</th>
-            <th>最终金额</th>
-            <th>Remarks</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fpoDetailLines.map((row) => (
-            <tr key={row.ln}>
-              <td style={{ textAlign: "right" }}>{row.ln}</td>
-              <td>{row.itemId}</td>
-              <td>{row.desc}</td>
-              <td style={{ textAlign: "right" }}>{row.estQty}</td>
-              <td style={{ textAlign: "right" }}>{row.shipQty}</td>
-              <td style={{ textAlign: "right" }}>{row.recvQty}</td>
-              <td style={{ textAlign: "right" }}>{row.remainQty}</td>
-              <td style={{ textAlign: "right" }}>{`US$${row.estPrice.toFixed(2)}`}</td>
-              <td style={{ textAlign: "right" }}>{`US$${row.estAmt.toFixed(2)}`}</td>
-              <td style={{ textAlign: "right" }}>{`US$${row.curPrice.toFixed(2)}`}</td>
-              <td style={{ textAlign: "right" }}>{`US$${row.curAmt.toFixed(2)}`}</td>
-              <td style={{ textAlign: "right" }}>{`US$${row.finalPrice.toFixed(2)}`}</td>
-              <td style={{ textAlign: "right" }}>{`US$${row.finalAmt.toFixed(2)}`}</td>
-              <td>{row.remarks || ""}</td>
-              <td>{row.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {data.error || error ? (
+        <div className="fpo-message error" role="alert">
+          {data.error || error}
+        </div>
+      ) : null}
+      {!order ? (
+        <div className="purchase-card">FPO order not found.</div>
+      ) : (
+        <>
+          <div className="purchase-summary-box">
+            <table className="purchase-summary-table">
+              <tbody>
+                <tr>
+                  <th>FPO No.</th>
+                  <td>{order.fpoNo}</td>
+                  <th>Whse</th>
+                  <td>{order.warehouseId}</td>
+                  <th>FPO Date</th>
+                  <td>{order.fpoDate}</td>
+                </tr>
+                <tr>
+                  <th>Total PCS</th>
+                  <td>
+                    {order.lines.reduce((sum, line) => sum + line.qty, 0)}
+                  </td>
+                  <th>Vendor ID 1</th>
+                  <td>{order.vendorId}</td>
+                  <th>Forecast By</th>
+                  <td>{order.forecastBy || "—"}</td>
+                </tr>
+                <tr>
+                  <th>Total Amount</th>
+                  <td>{money(orderAmount(order))}</td>
+                  <th>Vendor ID 2</th>
+                  <td>{order.vendorId2 || "—"}</td>
+                  <th>Confirmed By</th>
+                  <td>{order.confirmBy || "—"}</td>
+                </tr>
+                <tr>
+                  <th>Status</th>
+                  <td>{order.status}</td>
+                  <th>Remarks</th>
+                  <td colSpan={3}>{order.remarks || "—"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="fpo-help">
+            Remaining Qty = Order Qty − Shipped Qty. All amounts are in USD.
+          </p>
+          <div className="fpo-table-scroll">
+            <table className="purchase-detail-table">
+              <thead>
+                <tr>
+                  {[
+                    "Ln.",
+                    "Item ID",
+                    "Description",
+                    "Order Qty",
+                    "Shipped Qty",
+                    "Received Qty",
+                    "Remaining Qty",
+                    "Unit Price",
+                    "Amount",
+                  ].map((label) => (
+                    <th key={label}>{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {order.lines.map((line, index) => (
+                  <tr key={index}>
+                    <td>{index + 1}</td>
+                    <td>{line.itemId}</td>
+                    <td>{line.desc || "—"}</td>
+                    <td>{line.qty}</td>
+                    <td>{line.shipQty}</td>
+                    <td>{line.recvQty}</td>
+                    <td>{remainingQty(line)}</td>
+                    <td>{money(line.price)}</td>
+                    <td>{money(lineAmount(line))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
