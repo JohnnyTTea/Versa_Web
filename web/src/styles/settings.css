@@ -163,6 +163,47 @@
   padding: 8px;
 }
 
+.users-list-toolbar,
+.users-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 14px 0;
+  color: var(--settings-muted);
+  font-size: 13px;
+}
+
+.users-role-filter,
+.users-pagination-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.users-role-filter {
+  color: var(--settings-ink);
+  font-weight: 700;
+}
+
+.users-role-filter select,
+.users-pagination button {
+  padding: 8px 12px;
+  border: 1px solid var(--settings-line);
+  border-radius: 10px;
+  background: var(--settings-surface);
+  color: var(--settings-ink);
+  font: inherit;
+}
+
+.users-role-filter select { min-width: 160px; }
+.users-pagination button { cursor: pointer; }
+.users-pagination button:hover:not(:disabled) { background: var(--settings-surface-2); }
+.users-pagination button:disabled { opacity: 0.45; cursor: not-allowed; }
+.user-table td.users-empty { padding: 28px 12px; text-align: center; color: var(--settings-muted); }
+
 .role-table-wrapper {
   max-height: 70vh;
   overflow: auto;

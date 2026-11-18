@@ -25,8 +25,9 @@ type SummaryRow = {
 
 function toCsv(rows: WarehouseLogRow[]) {
   const lines = [
-    ["User", "Tracking Number", "Ship Via", "Freight", "Packed Date", "Packed At"],
-    ...rows.map((row) => [
+    ["Index", "User", "Tracking Number", "Ship Via", "Freight", "Packed Date", "Packed At"],
+    ...rows.map((row, index) => [
+      index + 1,
       row.username,
       row.tracking_number,
       row.shipvia || "",
@@ -267,6 +268,7 @@ export default function WarehouseLogs() {
             <table style={{ width: "100%", minWidth: 720, margin: "0 auto", borderCollapse: "collapse" }}>
               <thead style={{ background: "#f8fafc" }}>
                 <tr>
+                  <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Index</th>
                   <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>User</th>
                   <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Tracking Number</th>
                   <th scope="col" style={{ textAlign: "center", padding: "10px 12px", color: "#334155", fontSize: 12 }}>Ship Via</th>
@@ -277,6 +279,7 @@ export default function WarehouseLogs() {
               <tbody>
                 {records.length ? records.map((row, index) => (
                   <tr key={`${row.username}-${row.tracking_number}-${row.packed_at}-${index}`} style={{ borderTop: "1px solid #e2e8f0" }}>
+                    <td style={{ textAlign: "center", verticalAlign: "middle", padding: "10px 12px", color: "#475569" }}>{index + 1}</td>
                     <td style={{ textAlign: "center", verticalAlign: "middle", padding: "10px 12px", color: "#0f172a" }}>{row.username}</td>
                     <td style={{ textAlign: "center", verticalAlign: "middle", whiteSpace: "nowrap", padding: "10px 12px", color: "#0f172a", fontWeight: 600 }}>{row.tracking_number}</td>
                     <td style={{ textAlign: "center", verticalAlign: "middle", padding: "10px 12px", color: "#475569" }}>{row.shipvia || "—"}</td>
@@ -285,7 +288,7 @@ export default function WarehouseLogs() {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={5} style={{ padding: "18px 12px", textAlign: "center", color: "#64748b" }}>
+                    <td colSpan={6} style={{ padding: "18px 12px", textAlign: "center", color: "#64748b" }}>
                       No records found.
                     </td>
                   </tr>

@@ -5,6 +5,8 @@ import { trackUserEvent } from "../../utils/userLog";
 
 type Role = { id: number; role_name: string };
 
+const PAGE_SIZE = 10;
+
 type UserRow = {
   id: number;
   username: string;
@@ -79,6 +81,8 @@ export default function Users() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [roleFilter, setRoleFilter] = useState("");
+  const [page, setPage] = useState(1);
   const tableWrapperRef = useRef<HTMLDivElement | null>(null);
 
   // 编辑态：按 id 存草稿 + 备份（Cancel 回滚）
@@ -168,6 +172,23 @@ export default function Users() {
   const totalCount = users.length;
   const enabledCount = users.filter((u) => !!u.is_active).length;
   const disabledCount = totalCount - enabledCount;
+
+  const filteredUsers = useMemo(() => {
+    return users
+      .filter((u) => {
+        const savedRoleId = backupById[u.id]?.role_id ?? u.role_id;
+        return !roleFilter || String(savedRoleId) === roleFilter;
+      })
+      .sort((a, b) => {
+        const createdA = Date.parse(a.created_time) || 0;
+        const createdB = Date.parse(b.created_time) || 0;
+        return createdB - createdA || b.id - a.id;
+      });
+  }, [users, roleFilter, backupById]);
+  const pages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const visibleUsers = filteredUsers.slice(pageStart, pageStart + PAGE_SIZE);
 
   function startEdit(u: UserRow) {
     setEditingIds((m) => ({ ...m, [u.id]: true }));
@@ -382,10 +403,12 @@ export default function Users() {
       } as UserRow);
 
     setUsers((prev) => [...prev, created]);
+    if (roleFilter && roleFilter !== String(created.role_id)) setRoleFilter("");
+    setPage(1);
     requestAnimationFrame(() => {
       const el = tableWrapperRef.current;
       if (!el) return;
-      el.scrollTop = el.scrollHeight;
+      el.scrollTop = 0;
     });
     resetNewRow();
   }
@@ -434,6 +457,26 @@ export default function Users() {
         </div>
       </div>
 
+      <div className="users-list-toolbar">
+        <label className="users-role-filter" htmlFor="users-role-filter">
+          Filter role
+          <select
+            id="users-role-filter"
+            value={roleFilter}
+            onChange={(e) => {
+              setRoleFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All roles</option>
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>{role.role_name}</option>
+            ))}
+          </select>
+        </label>
+        <span>创建时间：最新优先 · 每页 {PAGE_SIZE} 人</span>
+      </div>
+
       <div className="table-wrapper users-table-card" ref={tableWrapperRef}>
         <table className="user-table">
           <thead>
@@ -452,7 +495,7 @@ export default function Users() {
           </thead>
 
           <tbody>
-            {users.map((u, idx) => {
+            {visibleUsers.map((u, idx) => {
               const isAdminAccount = u.username === "admin";
               const isCurrentUser = u.username === sessionUser;
               const statusLabel = u.is_active ? "Enabled" : "Disabled";
@@ -463,7 +506,7 @@ export default function Users() {
 
               return (
                 <tr key={u.id} className={isAdminAccount ? "admin-row" : undefined}>
-                  <td>{idx + 1}</td>
+                  <td>{pageStart + idx + 1}</td>
 
                   {/* username */}
                   <td>
@@ -694,10 +737,27 @@ export default function Users() {
                 </tr>
               );
             })}
-
+            {visibleUsers.length === 0 && (
+              <tr>
+                <td colSpan={10} className="users-empty">没有符合条件的用户。</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
+
+      <nav className="users-pagination" aria-label="Users pagination">
+        <span aria-live="polite">
+          显示 {filteredUsers.length ? pageStart + 1 : 0}–{Math.min(pageStart + PAGE_SIZE, filteredUsers.length)}，共 {filteredUsers.length} 人
+        </span>
+        <div className="users-pagination-controls">
+          <button type="button" disabled={currentPage <= 1} onClick={() => setPage(1)}>首页</button>
+          <button type="button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>上一页</button>
+          <span>第 {currentPage} / {pages} 页</span>
+          <button type="button" disabled={currentPage >= pages} onClick={() => setPage(currentPage + 1)}>下一页</button>
+          <button type="button" disabled={currentPage >= pages} onClick={() => setPage(pages)}>末页</button>
+        </div>
+      </nav>
 
       {isSuperAdmin && newRow.enabled && (
         <div
