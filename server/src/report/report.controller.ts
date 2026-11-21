@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ReportService } from './report.service';
+import { FITMENT_VERSION } from './sku-fitment';
 
 @Controller('api/report')
 export class ReportController {
@@ -40,7 +41,12 @@ export class ReportController {
       return await this.reports.startAnalyzeJob(rows, body?.fileName || 'uploaded-data');
     }
 
-    return await this.reports.analyzeRows(rows, body?.fileName || 'uploaded-data');
+    return await this.reports.analyzeRows(rows, body?.fileName || 'uploaded-data', true);
+  }
+
+  @Post('data/analyze/retry')
+  async retryAnalysis(@Body() body: { jobId?: string }) {
+    return this.reports.retryAnalyzeJob(body?.jobId || '');
   }
 
   @Get('data/analyze/evidence')
@@ -51,6 +57,11 @@ export class ReportController {
     res.setHeader('Content-Disposition', `attachment; filename="sku-fitment-evidence-${id}.json"`);
     res.setHeader('Cache-Control', 'no-store');
     return res.send(evidence);
+  }
+
+  @Get('data/analyze/version')
+  fitmentVersion() {
+    return { ok: true, version: FITMENT_VERSION };
   }
 
   @Get('data/analyze/progress')

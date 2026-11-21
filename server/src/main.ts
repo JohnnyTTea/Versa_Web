@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import * as dotenv from 'dotenv';
 import { AppModule } from './app.module';
 import session from 'express-session';
+import { json, type NextFunction, type Request, type Response } from 'express';
 
 async function bootstrap() {
   // Load .env for start:prod (node dist/main)
@@ -33,7 +34,12 @@ async function bootstrap() {
     }),
   );
 
+  const fitmentUpload = json({ limit: '2mb' });
+  app.use('/api/report/data/analyze', (req: Request, res: Response, next: NextFunction) => {
+    fitmentUpload(req, res, next);
+  });
+
   const port = Number(process.env.PORT || 3000);
-  await app.listen(port, '0.0.0.0');
+  await app.listen(port, process.env.VERSA_BIND_HOST || '0.0.0.0');
 }
 bootstrap();

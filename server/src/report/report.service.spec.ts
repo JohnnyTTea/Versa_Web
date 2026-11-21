@@ -64,6 +64,9 @@ describe('ReportService.date-range optimization', () => {
       expect(result.results[0].verdict).toBe('REVIEW');
       expect(result.results[0].page.status).toBe('ok');
       expect(result.results[0].targetUrl).toBe('https://www.amazon.com/dp/B000000001');
+      expect(result.results[0].internal).not.toHaveProperty('style');
+      expect(result.results[0].internal.sources).not.toHaveProperty('style');
+      expect(result.results[0].external).not.toHaveProperty('style');
     } finally {
       global.fetch = originalFetch;
     }
@@ -148,22 +151,23 @@ describe('ReportService.date-range optimization', () => {
 
     expect(compareProductFeatures({ material: 'PP' }, { material: 'polypropylene' }).dimensions.some(d => d.field === 'material')).toBe(false);
     const fit = compareProductFeatures(
-      { make: '', model: '', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'urethane', fitmentRange: '01-05' },
-      { make: 'lexus', model: 'is300', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'pu', fitmentRange: '2001-2005' },
+      { make: '', model: '', partType: 'front bumper lip', color: 'black', material: 'urethane', fitmentRange: '01-05' },
+      { make: 'lexus', model: 'is300', partType: 'front bumper lip', color: 'black', material: 'pu', fitmentRange: '2001-2005' },
     );
 
     expect(fit.verdict).toBe('REVIEW');
     expect(fit.mismatches).toEqual([]);
   });
 
-  it('identifies explicit style or material differences instead of treating them as a match', () => {
+  it('matches vehicle fitment and product type when material differs', () => {
     const service = new ReportService({} as any);
     const review = compareProductFeatures(
-      { make: 'lexus', model: 'is300', partType: 'front bumper lip', style: 'ams', color: 'black', material: 'pu', fitmentRange: '2001-2005' },
-      { make: 'lexus', model: 'is300', partType: 'front bumper lip', style: 'cs', color: 'black', material: 'pp', fitmentRange: '2001-2005' },
+      { make: 'lexus', model: 'is300', partType: 'front bumper lip', color: 'black', material: 'pu', fitmentRange: '2001-2005' },
+      { make: 'lexus', model: 'is300', partType: 'front bumper lip', color: 'black', material: 'pp', fitmentRange: '2001-2005' },
     );
 
-    expect(review.verdict).toBe('NOT FIT');
-    expect(review.mismatches).toEqual(expect.arrayContaining(['style: ams ≠ cs']));
+    expect(review.verdict).toBe('FIT');
+    expect(review.mismatches).toEqual([]);
+    expect(review.dimensions.map(d => d.field)).toEqual(['fitmentRange', 'model', 'color']);
   });
 });

@@ -5,8 +5,12 @@ import * as path from 'path';
 import ExcelJS from 'exceljs';
 import { randomUUID, createHash } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
-import { extractProductFeatures, extractLocalSkuFeatures, extractReferenceFeatures, compareProductFeatures, emptyEvidence, FITMENT_VERSION, type PageEvidence } from './sku-fitment';
+import { setTimeout as delay } from 'node:timers/promises';
+import { extractLocalSkuFeatures, extractReferenceFeatures, compareProductFeatures, emptyEvidence, fitmentPriceQuote, needsFitmentRecheck, FITMENT_VERSION, type PageEvidence } from './sku-fitment';
 import { fetchProductEvidence } from './sku-fitment-fetch';
+import { amazonFitmentFetcher, usesAmazonCatalog } from './sku-fitment-amazon';
+import { fitmentRemark } from './sku-fitment-remark';
+import { catalogStyle } from './sku-data-report-style';
 
 const AIS_CUTOVER_DATE = '2026-01-01';
 
@@ -21,6 +25,15 @@ type ReportKey =
 
 type ReportGroup = { name: string; states: string[] };
 type GenerateOptions = { startDate?: string; endDate?: string };
+type FitmentPageCache = Map<string, Promise<{ page: PageEvidence; html: string }>>;
+type FitmentPageFetcher = typeof fetchProductEvidence;
+type FitmentSite = { sent: number; lastEnded: number; resumeAt: number };
+
+function fitmentSite(targetUrl: string) {
+  try { return new URL(targetUrl).hostname.replace(/^www\./, ''); }
+  catch { return ''; }
+}
+
 type DataMonthRow = {
   year: number;
   month: number;
@@ -907,6 +920,7 @@ export class ReportService {
     }
 
     const extracted = this.buildSkuFeatureObject(item);
+    const style = catalogStyle(extracted.itemno, extracted.fitmentText);
 
     return {
       ok: true,
@@ -916,7 +930,7 @@ export class ReportService {
         Desc2: item.Desc2,
         Vendno: item.Vendno,
       },
-      extracted,
+      extracted: { ...extracted, style: style.value, sources: { ...extracted.sources, style: style.source } },
     };
   }
 
@@ -1073,9 +1087,51 @@ export class ReportService {
     status: 'running' | 'done' | 'failed';
     results: any[];
     error?: string;
+    retryJobId?: string;
   }>();
 
   private evidenceDir = path.join(process.cwd(), 'tmp', 'fitment');
+  private fitmentFetchTail = Promise.resolve();
+  private lastFitmentFetchEnd = 0;
+  private readonly fitmentSites = new Map<string, FitmentSite>();
+
+  private pacedFitmentFetcher(): FitmentPageFetcher {
+    const deferredSites = new Map<string, string>();
+    return targetUrl => {
+      const site = fitmentSite(targetUrl);
+      if (!site) return fetchProductEvidence(targetUrl);
+      const request = this.fitmentFetchTail.then(async () => {
+        let state = this.fitmentSites.get(site);
+        const retryAt = deferredSites.get(site) ||
+          (state && state.resumeAt > Date.now() ? new Date(state.resumeAt).toISOString() : undefined);
+        if (retryAt) {
+          deferredSites.set(site, retryAt);
+          const page = emptyEvidence(targetUrl, 'not_requested', '站点请求已暂停，此链接尚未请求');
+          return { page: { ...page, fetchedAt: '', retryAt }, html: '' };
+        }
+        const interval = state?.sent && state.sent % 10 === 0 ? 45_000 : 8_000;
+        const remaining = Math.max(this.lastFitmentFetchEnd + 8_000, (state?.lastEnded || 0) + interval) - Date.now();
+        if (remaining > 0) await delay(remaining);
+        const result = await fetchProductEvidence(targetUrl);
+        if (result.page.status !== 'invalid_url') {
+          this.lastFitmentFetchEnd = Date.now();
+          state ??= { sent: 0, lastEnded: 0, resumeAt: 0 };
+          state.sent++;
+          state.lastEnded = this.lastFitmentFetchEnd;
+          this.fitmentSites.set(site, state);
+          if (needsFitmentRecheck(result.page)) {
+            const delayMs = result.page.status === 'blocked' ? 10 * 60_000 : 2 * 60_000;
+            state.resumeAt = Math.max(Date.now() + delayMs, Date.parse(result.page.retryAt || '') || 0);
+            result.page.retryAt = new Date(state.resumeAt).toISOString();
+            deferredSites.set(site, result.page.retryAt);
+          }
+        }
+        return result;
+      });
+      this.fitmentFetchTail = request.then(() => undefined, () => undefined);
+      return request;
+    };
+  }
 
   async getFitmentEvidence(id: string) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
@@ -1092,7 +1148,8 @@ export class ReportService {
     return id;
   }
 
-  private async analyzeSingleRow(row: Record<string, any>, fileName?: string, cache?: Map<string, Promise<{ page: PageEvidence; html: string }>>) {
+  private async analyzeSingleRow(row: Record<string, any>, fileName: string | undefined, cache: FitmentPageCache,
+    fetchPage: FitmentPageFetcher = fetchProductEvidence) {
     const sku = this.extractSkuFromRow(row);
     const targetUrl = this.extractTargetUrlFromRow(row);
     const goodsId = this.getRowValue(row, ['Goods ID', 'goodsid']);
@@ -1108,57 +1165,103 @@ export class ReportService {
       result = { sku, goodsId, targetUrl, fileName, verdict: 'INVALID', reason, mismatches: [], dimensions: [], confidence: 'not_calibrated', version: FITMENT_VERSION };
     } else {
       internal = this.buildSkuFeatureObject(existing);
-      if (cache && !cache.has(targetUrl)) {
+      if (!cache.has(targetUrl)) {
         if (cache.size >= 12) cache.delete(cache.keys().next().value!);
-        cache.set(targetUrl, fetchProductEvidence(targetUrl));
+        cache.set(targetUrl, fetchPage(targetUrl));
       }
-      const fetched = await (cache?.get(targetUrl) || fetchProductEvidence(targetUrl));
+      const fetched = await cache.get(targetUrl)!;
       page = fetched.page; html = fetched.html;
       // No fallback to our own description. A failed page has no external features.
       const external = extractReferenceFeatures(page);
       const comparison = compareProductFeatures({ ...internal, dimensions: internal.productDimensions }, external, page);
       result = { sku, goodsId, targetUrl, fileName, ...comparison, internal, external,
-        internalSource: { schema: 'aisdata0', table: 'item', itemno: sku, retrievedAt },
-        priceReview: { status: 'needs_review', reason: '商品可比性与价格分开；需核对选中变体、优惠、运费和时间', price: page.price, currency: page.currency, availability: page.availability } };
+        internalSource: { schema: 'aisdata0', table: 'item', itemno: sku, retrievedAt } };
     }
+    const currentPrice = fitmentPriceQuote(page);
+    const priceReason = currentPrice?.kind === 'featured_offer' ? 'Amazon SP-API 新品推荐报价' :
+      currentPrice?.kind === 'promotion' ? '参考页促销价，日常售价待确认' :
+        currentPrice ? '参考页显示价，日常售价待确认' : page.priceReason || '未核实参考售价';
+    result.priceReview = {
+      status: 'needs_review',
+      reason: priceReason,
+      price: currentPrice?.amount || '', currency: currentPrice?.currency || '', availability: page.availability,
+      current: currentPrice,
+    };
     result.page = page;
+    if (Number.isSafeInteger(row.sourceRow) && row.sourceRow > 0) result.sourceRow = row.sourceRow;
+    result.remark = fitmentRemark(result, currentPrice);
     // Human labels are deliberately not consumed by feature extraction/comparison.
     result.review = { status: 'pending', decision: null };
     try { result.evidenceId = await this.saveFitmentEvidence(result, html); }
-    catch { result.evidenceError = '证据保存失败，本条必须人工复核'; result.verdict = 'REVIEW'; result.needsReview = true; result.reason += '；证据保存失败'; }
+    catch {
+      result.evidenceError = '证据保存失败，本条必须人工复核'; result.verdict = 'REVIEW'; result.needsReview = true; result.reason += '；证据保存失败';
+      result.remark = fitmentRemark(result, currentPrice);
+    }
     return result;
   }
 
-  async analyzeRows(rows: Array<Record<string, any>>, fileName?: string) {
+  async analyzeRows(rows: Array<Record<string, any>>, fileName?: string, paced = false) {
     const results = [] as any[];
-    const cache = new Map<string, Promise<{ page: PageEvidence; html: string }>>();
-    for (const row of rows) results.push(await this.analyzeSingleRow(row, fileName, cache));
+    const cache: FitmentPageCache = new Map();
+    const links = rows.filter(row => this.extractSkuFromRow(row)).map(row => this.extractTargetUrlFromRow(row));
+    const fetchPage = amazonFitmentFetcher(links, paced ? this.pacedFitmentFetcher() : fetchProductEvidence);
+    for (const row of rows) results.push(await this.analyzeSingleRow(row, fileName, cache, fetchPage));
     return { ok: true, fileName, results };
   }
 
-  async startAnalyzeJob(rows: Array<Record<string, any>>, fileName?: string) {
-    const jobId = `analyze-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  async startAnalyzeJob(rows: Array<Record<string, any>>, fileName?: string, results = new Array<any>(rows.length)) {
+    const jobId = randomUUID();
+    const done = results.filter(Boolean).length;
     const job = {
       jobId,
       fileName: fileName || 'uploaded-data',
       total: rows.length,
-      done: 0,
+      done,
       status: 'running' as const,
       results: [] as any[],
     };
     this.analyzeJobs.set(jobId, job);
 
-    void this.runAnalyzeJob(jobId, rows, fileName);
+    void this.runAnalyzeJob(jobId, rows, fileName, results);
 
     return {
       ok: true,
       jobId,
       status: 'running',
       total: rows.length,
-      done: 0,
+      done,
       fileName: job.fileName,
       results: [],
     };
+  }
+
+  async retryAnalyzeJob(jobId: string) {
+    const job = this.analyzeJobs.get(jobId);
+    if (!job || job.status !== 'done') return { ok: false, message: '没有可补查的已完成任务。' };
+    if (job.retryJobId) return this.getAnalyzeJobProgress(job.retryJobId);
+
+    const now = Date.now();
+    let firstAvailable = Infinity;
+    const results = job.results.map(row => {
+      if (!needsFitmentRecheck(row.page)) return row;
+      const site = usesAmazonCatalog(row.page) ? undefined : this.fitmentSites.get(fitmentSite(row.targetUrl));
+      const retryAt = Math.max(site?.resumeAt || 0, Date.parse(row.page.retryAt || '') || 0);
+      if (retryAt > now) {
+        firstAvailable = Math.min(firstAvailable, retryAt);
+        return row;
+      }
+      return undefined;
+    });
+    if (results.every(Boolean)) {
+      return {
+        ok: false, message: Number.isFinite(firstAvailable) ? '站点仍在暂停期，请到提示的时间再补查。' : '没有需要补查的记录。',
+        retryAt: Number.isFinite(firstAvailable) ? new Date(firstAvailable).toISOString() : undefined,
+      };
+    }
+    const rows = job.results.map(row => ({ SKU: row.sku, '参考链接': row.targetUrl, 'Goods ID': row.goodsId, sourceRow: row.sourceRow }));
+    const retry = await this.startAnalyzeJob(rows, job.fileName, results);
+    job.retryJobId = retry.jobId;
+    return retry;
   }
 
   async getAnalyzeJobProgress(jobId: string) {
@@ -1180,18 +1283,29 @@ export class ReportService {
     };
   }
 
-  private async runAnalyzeJob(jobId: string, rows: Array<Record<string, any>>, fileName?: string) {
+  private async runAnalyzeJob(jobId: string, rows: Array<Record<string, any>>, fileName: string | undefined, results: any[]) {
     const job = this.analyzeJobs.get(jobId);
     if (!job) return;
-    const results: any[] = new Array(rows.length);
-    const cache = new Map<string, Promise<{ page: PageEvidence; html: string }>>();
+    const cache: FitmentPageCache = new Map();
+    const byLink = new Map<string, number[]>();
+    for (const [index, row] of rows.entries()) {
+      if (results[index]) continue;
+      const link = this.extractTargetUrlFromRow(row);
+      if (!byLink.has(link)) byLink.set(link, []);
+      byLink.get(link)!.push(index);
+    }
+    const links = [...byLink].filter(([, indices]) => indices.some(index => this.extractSkuFromRow(rows[index]))).map(([link]) => link);
+    const fetchPage = amazonFitmentFetcher(links, this.pacedFitmentFetcher());
+    const order = [...byLink.values()].flat();
     let next = 0;
     const worker = async () => {
-      while (next < rows.length) {
-        const index = next++;
-        try { results[index] = await this.analyzeSingleRow(rows[index], fileName, cache); }
+      while (next < order.length) {
+        const index = order[next++];
+        try { results[index] = await this.analyzeSingleRow(rows[index], fileName, cache, fetchPage); }
         catch (error) {
           results[index] = { sku: this.extractSkuFromRow(rows[index]), targetUrl: this.extractTargetUrlFromRow(rows[index]), fileName,
+            goodsId: this.getRowValue(rows[index], ['Goods ID', 'goodsid']),
+            sourceRow: Number.isSafeInteger(rows[index].sourceRow) && rows[index].sourceRow > 0 ? rows[index].sourceRow : undefined,
             verdict: 'REVIEW', confidence: 'not_calibrated', version: FITMENT_VERSION,
             reason: `本条处理失败，需人工复核：${error instanceof Error ? error.message : String(error)}`, dimensions: [], mismatches: [] };
         }
@@ -1199,7 +1313,7 @@ export class ReportService {
         job.results = results.filter(Boolean);
       }
     };
-    try { await Promise.all(Array.from({ length: Math.min(3, rows.length) }, worker)); job.status = 'done'; }
+    try { await Promise.all(Array.from({ length: Math.min(3, order.length) }, worker)); job.status = 'done'; }
     catch (error) { job.status = 'failed'; job.error = error instanceof Error ? error.message : String(error); }
     finally { cache.clear(); }
   }

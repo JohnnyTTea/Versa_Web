@@ -40,6 +40,7 @@ export default function Navbar() {
         credentials: "include",
       });
     } finally {
+      sessionStorage.removeItem("versa-sku-fitment-job");
       setUsername("");
       nav("/login", { replace: true });
     }

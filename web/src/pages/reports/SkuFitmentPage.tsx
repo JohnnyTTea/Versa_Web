@@ -1,283 +1,354 @@
 import { useEffect, useRef, useState } from "react";
-import * as XLSX from "xlsx";
+import type { ChangeEvent } from "react";
+import {
+  CHECK_STATUS, FIELDS, FITMENT_RULES_VERSION, FITMENT_UPLOAD_LIMIT, PAGE_STATUS, PRICES, VERDICTS,
+  canRecheck, downloadFitmentReport, downloadFitmentTemplate, httpsLink, priceFields, readFitmentWorkbook, reportProductText, reportRemark,
+} from "./skuFitmentWorkbook";
+import type { FitmentResult, Verdict } from "./skuFitmentWorkbook";
 import "../../styles/report.css";
+import "../../styles/sku-fitment.css";
 
-async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, {
-    credentials: "include",
-    signal,
-    headers: { Accept: "application/json" },
+type Workbook = Awaited<ReturnType<typeof readFitmentWorkbook>>;
+type Job = { jobId: string; fileName: string; total: number; done: number; status: "running" | "done" | "failed" };
+type JobResponse = Partial<Job> & { ok: boolean; version?: string; message?: string; error?: string; results?: FitmentResult[]; retryAt?: string };
+const storedJob = "versa-sku-fitment-job";
+const resultsPerPage = 20;
+const fieldName = FIELDS as Record<string, string>;
+const displayDate = (value: string) => value ? new Date(value).toLocaleString() : "—";
+
+async function requestJob(path: string, signal: AbortSignal, body?: object): Promise<JobResponse> {
+  const response = await fetch(path, {
+    credentials: "include", signal, cache: "no-store", method: body ? "POST" : "GET",
+    headers: { Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  return (await res.json()) as T;
+  if (response.status === 401 || response.status === 403) throw new Error("登录状态已失效，请重新登录 Versa。");
+  if (response.status === 413) throw new Error("表格数据超出上传大小，请拆成几个文件后再上传。");
+  if (response.status === 404 && path.endsWith("/version")) throw new Error("当前连接的是旧版分析服务，请刷新页面后重试。");
+  if (!response.ok) throw new Error(`服务暂不可用（HTTP ${response.status}）。`);
+  return response.json();
 }
 
-async function apiPost<T>(url: string, body: any, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(text || `HTTP ${res.status}`);
-  }
-  return (await res.json()) as T;
+function savedJob(): Job | null {
+  try {
+    const job = JSON.parse(sessionStorage.getItem(storedJob) || "null");
+    return job?.jobId && job.fileName ? job : null;
+  } catch { return null; }
 }
 
-function readExcelRows(file: File): Promise<any[]> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const buffer = reader.result as ArrayBuffer;
-        const workbook = XLSX.read(buffer, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: false });
-        resolve(rows);
-      } catch (error) {
-        reject(error);
-      }
-    };
-    reader.onerror = () => reject(new Error("Failed to read uploaded file"));
-    reader.readAsArrayBuffer(file);
-  });
+function remember(job?: Job) {
+  try {
+    if (job) sessionStorage.setItem(storedJob, JSON.stringify(job));
+    else sessionStorage.removeItem(storedJob);
+  } catch { /* the current page remains usable without session storage */ }
 }
-
-const VERDICT_LABELS: Record<string, string> = { FIT: "四项匹配", "NOT FIT": "四项不匹配", REVIEW: "待人工复核", INVALID: "输入无效" };
-const FIELD_LABELS: Record<string, string> = { fitmentRange: "年份", model: "车型", color: "颜色", style: "款式" };
-const STATUS_LABELS: Record<string, string> = { same: "一致", different: "不同", partial: "部分重叠", unknown: "信息不足" };
-const PAGE_LABELS: Record<string, string> = { ok: "已提取商品资料", blocked: "访问受限/验证码", unavailable: "链接失效/商品不可用", not_product: "未找到商品资料", ambiguous: "商品未确认", fetch_failed: "获取失败", invalid_url: "链接无效", invalid_input: "输入资料无效" };
-const safeLink = (value: string) => /^https:\/\//i.test(value || "") ? value : undefined;
 
 export default function SkuFitmentPage() {
-  const [uploading, setUploading] = useState(false);
-  const request = useRef<AbortController | null>(null);
-  useEffect(() => () => request.current?.abort(), []);
-  const [uploadError, setUploadError] = useState("");
-  const [uploadRows, setUploadRows] = useState<any[]>([]);
-  const [jobStatus, setJobStatus] = useState<{
-    jobId: string;
-    status: string;
-    total: number;
-    done: number;
-    fileName?: string;
-    error?: string;
-    results: any[];
-  } | null>(null);
+  const [workbook, setWorkbook] = useState<Workbook | null>(null);
+  const [sheetIndex, selectSheet] = useState(0);
+  const [job, setJob] = useState<Job | null>(savedJob);
+  const [results, setResults] = useState<FitmentResult[]>([]);
+  const [working, setWorking] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState<"all" | Verdict>("all");
+  const [resultPage, setResultPage] = useState(1);
+  const [pollAttempt, retryPoll] = useState(0);
+  const upload = useRef<AbortController | null>(null);
+  const tableScroll = useRef<HTMLDivElement>(null);
+  const selected = workbook?.sheets[sheetIndex];
+  const selectedCount = selected?.rows.length || 0;
+  const overUploadLimit = selectedCount > FITMENT_UPLOAD_LIMIT;
+  const jobId = job?.jobId;
+  const fileName = job?.fileName;
+  const filtered = filter === "all" ? results : results.filter(row => row.verdict === filter);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / resultsPerPage));
+  const currentPage = Math.min(resultPage, pageCount);
+  const pageStart = (currentPage - 1) * resultsPerPage;
+  const displayed = filtered.slice(pageStart, pageStart + resultsPerPage);
+  const retryCount = results.filter(canRecheck).length;
+  const progress = job?.total ? Math.min(100, Math.round(job.done * 100 / job.total)) : 0;
 
-  const progressPercent = jobStatus && jobStatus.total ? Math.min(100, Math.round((jobStatus.done / jobStatus.total) * 100)) : 0;
-
-  const downloadAnalyzeCsv = (results: any[]) => {
-    if (!results.length) return;
-    const headers = ["Goods ID", "SKU", "比价可比性", "程序状态", "资料覆盖", "网页状态", "具体变体", "抓取时间", "参考标题", "我方描述", "参考商品文字", "原因", "参考链接", "最终链接", "参考价格", "币种", "价格核查", "证据ID", "分析版本", ...Object.entries(FIELD_LABELS).flatMap(([, label]) => [`${label}结论`, `${label}我方`, `${label}参考`, `${label}依据`, `${label}我方来源`])];
-    const csvCell = (value: unknown) => {
-      let text = String(value ?? "");
-      if (/^[\t\r ]*[=+@-]/.test(text)) text = `'${text}`;
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-    const lines = [headers, ...results.map(row => [
-      row.goodsId, row.sku, VERDICT_LABELS[row.verdict] || row.verdict, row.verdict, row.evidenceCoverage, PAGE_LABELS[row.page?.status] || row.page?.status,
-      row.page?.selectedVariant || (row.page?.variantStatus === "unconfirmed" ? "未确认" : "未检测到多变体"),
-      row.page?.fetchedAt, row.page?.title, row.internal?.text, row.external?.text, row.reason,
-      row.targetUrl, row.page?.finalUrl, row.page?.price, row.page?.currency, row.priceReview?.reason, row.evidenceId, row.version,
-      ...Object.keys(FIELD_LABELS).flatMap(field => {
-        const d = row.dimensions?.find((item: any) => item.field === field);
-        return [STATUS_LABELS[d?.status] || "信息不足", d?.internal, d?.external, d?.reason, row.internal?.sources?.[field]];
-      }),
-    ])];
-    const blob = new Blob(["\uFEFF", lines.map(row => row.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `sku-fitment-${Date.now()}.csv`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleFileUpload = async (event: any) => {
-    const file = event?.target?.files?.[0];
-    if (!file) return;
-
-    request.current?.abort();
+  useEffect(() => () => upload.current?.abort(), []);
+  useEffect(() => {
+    if (!jobId || !fileName) return;
     const controller = new AbortController();
-    request.current = controller;
-    setUploading(true);
-    setUploadError("");
-    setUploadRows([]);
-    setJobStatus(null);
-
-    try {
-      const rows = await readExcelRows(file);
-      if (!Array.isArray(rows) || !rows.length) {
-        throw new Error("No rows found in uploaded file");
-      }
-
-      const payload = {
-        rows: rows.map((row) => {
-          const normalized: Record<string, any> = {};
-          Object.entries(row).forEach(([key, value]) => {
-            const name = String(key).normalize("NFKC").replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
-            const inputKeys = ["sku", "itemno", "productsku", "partnumber", "productnumber", "货号", "cpono", "goodsid"];
-            if (inputKeys.includes(name) || /url|link|链接|网址|参考地址|网页/.test(name)) normalized[String(key)] = value ?? "";
-          });
-          return normalized;
-        }),
-        fileName: file.name,
-        async: true,
-      };
-
-      const job = await apiPost<{ ok: boolean; jobId?: string; status?: string; message?: string; total?: number; done?: number; results?: any[]; fileName?: string }>(
-        "/api/report/data/analyze",
-        payload,
-        controller.signal,
-      );
-
-      const jobId = job.jobId;
-      if (!job.ok || !jobId) {
-        throw new Error(job.message || "Failed to start uploaded file analysis");
-      }
-
-      setJobStatus({
-        jobId,
-        status: job.status || "running",
-        total: job.total || rows.length,
-        done: job.done || 0,
-        results: job.results || [],
-        fileName: job.fileName || file.name,
-      });
-
-      while (!controller.signal.aborted) {
-        const status = await apiGet<{ ok: boolean; status?: string; total?: number; done?: number; results?: any[]; message?: string; error?: string; fileName?: string }>(`/api/report/data/analyze/progress?jobId=${encodeURIComponent(jobId)}`, controller.signal);
+    let timer: number | undefined;
+    async function poll() {
+      try {
+        const reply = await requestJob(`/api/report/data/analyze/progress?jobId=${encodeURIComponent(jobId!)}`, controller.signal);
         if (controller.signal.aborted) return;
-        if (!status.ok) throw new Error(status.message || "Analysis failed");
-        setJobStatus({ jobId, status: status.status || "running", total: status.total || rows.length, done: status.done || 0,
-          results: status.results || [], fileName: status.fileName || file.name, error: status.error });
-        if (status.status === "done") {
-          setUploadRows(status.results || []);
-          setUploading(false);
-          break;
+        if (!reply.ok) {
+          if (reply.message === "Job not found") {
+            remember();
+            setJob(null);
+            throw new Error("这次任务记录已失效，请重新选择表格开始。");
+          }
+          throw new Error(reply.message || "无法查询任务进度。");
         }
-        if (status.status === "failed") throw new Error(status.message || status.error || "Analysis failed");
-        await new Promise(resolve => window.setTimeout(resolve, 1000));
+        const next: Job = {
+          jobId: jobId!, fileName: reply.fileName || fileName!, status: reply.status || "running",
+          total: reply.total ?? 0, done: reply.done ?? 0,
+        };
+        setJob(next);
+        remember(next);
+        if (next.status === "done") {
+          const completed = reply.results || [];
+          if (completed.some(row => row.version !== FITMENT_RULES_VERSION)) {
+            remember();
+            setJob(null);
+            throw new Error("这次结果来自旧版分析服务，请重新上传表格运行。");
+          }
+          setResults(completed);
+          setResultPage(1);
+          setWorking(false);
+        } else if (next.status === "failed") {
+          remember();
+          throw new Error(reply.error || reply.message || "分析失败，请重新上传。");
+        } else {
+          timer = window.setTimeout(poll, 1500);
+        }
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message : "无法查询任务进度。");
+        setWorking(false);
       }
-    } catch (error: any) {
-      if (controller.signal.aborted) return;
-      setUploadRows([]);
-      setJobStatus(null);
-      setUploadError(String(error?.message || error || "Upload analyze failed"));
-      setUploading(false);
-    } finally {
-      if (event?.target) event.target.value = "";
     }
-  };
+    setWorking(true);
+    void poll();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [jobId, fileName, pollAttempt]);
+
+  async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setReading(true);
+    setWorkbook(null);
+    setError("");
+    try {
+      const parsed = await readFitmentWorkbook(file);
+      setWorkbook(parsed);
+      selectSheet(parsed.initialSheet);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法读取表格。");
+    } finally {
+      setReading(false);
+    }
+  }
+
+  async function startAnalysis() {
+    if (!selected || !workbook || overUploadLimit || upload.current) return;
+    const controller = new AbortController();
+    upload.current = controller;
+    setError("");
+    setWorking(true);
+    setResults([]);
+    setFilter("all");
+    setJob(null);
+    remember();
+    try {
+      const service = await requestJob("/api/report/data/analyze/version", controller.signal);
+      if (service.version !== FITMENT_RULES_VERSION) throw new Error("当前连接的是旧版分析服务，请刷新页面后重试。");
+      const reply = await requestJob("/api/report/data/analyze", controller.signal, {
+        rows: selected.rows, fileName: workbook.name, async: true,
+      });
+      if (controller.signal.aborted) return;
+      if (!reply.ok || !reply.jobId) throw new Error(reply.message || "未能启动分析任务。");
+      const started: Job = {
+        jobId: reply.jobId, fileName: reply.fileName || workbook.name,
+        total: reply.total ?? selected.rows.length, done: reply.done ?? 0, status: "running",
+      };
+      remember(started);
+      setJob(started);
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      setError(cause instanceof Error ? cause.message : "未能启动分析任务。");
+      setWorking(false);
+    } finally {
+      upload.current = null;
+    }
+  }
+
+  function download(format: "xlsx" | "csv") {
+    try { downloadFitmentReport(results, job?.fileName || "SKU-Fitment", format); }
+    catch { setError("未能生成报告，请重试下载。"); }
+  }
+
+  function downloadTemplate() {
+    try { downloadFitmentTemplate(); }
+    catch { setError("未能下载模板，请重试。"); }
+  }
+
+  function showResultPage(page: number) {
+    setResultPage(page);
+    if (tableScroll.current) tableScroll.current.scrollTop = 0;
+  }
+
+  function selectFilter(verdict: "all" | Verdict) {
+    setFilter(verdict);
+    showResultPage(1);
+  }
+
+  async function retryPending() {
+    if (!job || working || upload.current) return;
+    const controller = new AbortController();
+    upload.current = controller;
+    setWorking(true);
+    setError("");
+    try {
+      const reply = await requestJob("/api/report/data/analyze/retry", controller.signal, { jobId: job.jobId });
+      if (controller.signal.aborted) return;
+      if (!reply.ok || !reply.jobId) {
+        const extra = reply.retryAt ? " 最早补查时间 " + displayDate(reply.retryAt) + "。" : "";
+        throw new Error((reply.message || "未能开始补查。") + extra);
+      }
+      const retry: Job = { jobId: reply.jobId, fileName: reply.fileName || job.fileName, status: "running",
+        total: reply.total ?? job.total, done: reply.done ?? 0 };
+      remember(retry);
+      setJob(retry);
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      setError(cause instanceof Error ? cause.message : "未能开始补查。");
+      setWorking(false);
+    } finally {
+      upload.current = null;
+    }
+  }
 
   return (
-    <div className="dr-page progressive-enter">
+    <div className="dr-page progressive-enter sku-fitment">
       <section className="dr-section">
         <div className="dr-header">
-          <h2>SKU Fitment Check</h2>
-          <div className="dr-entity-current">上传 SKU 与参考链接，使用我方 SKU、Desc1/Desc2 与参考商品比对年份、车型、颜色及款式，并保存来源证据。品牌、图片、材质、尺寸和数量不参与判断。资料缺失、变体未确认或网页受限时转人工复核。</div>
+          <h2>SKU Fitment</h2>
+          <p>用 SKU 和参考商品链接检查适配、产品类型及当前售价。</p>
         </div>
 
-        <div className="dr-table-frame" style={{ marginTop: 16 }}>
-          <div className="dr-table-wrap">
-            <div className="dr-chart-card" style={{ padding: 18 }}>
-              <div className="dr-chart-head">
-                <div className="dr-chart-title">Upload SKU Fitment File</div>
-              </div>
-
-              <div style={{ marginTop: 12 }}>
-                <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} disabled={uploading} />
-                {(uploading || jobStatus) ? (
-                  <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: "#fff7ed", border: "1px solid #fdba74" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 8 }}>
-                      <strong>{jobStatus?.status === "done" ? "Analysis completed" : jobStatus?.status === "failed" ? "Analysis failed" : "Analyzing uploaded file"}</strong>
-                      <span>{jobStatus && jobStatus.total ? `${progressPercent}%` : "0%"}</span>
-                    </div>
-                    <div style={{ height: 10, borderRadius: 999, background: "#fed7aa", overflow: "hidden" }}>
-                      <div style={{ width: `${progressPercent}%`, height: "100%", background: "linear-gradient(90deg, #f97316, #fb923c)", transition: "width 0.2s ease" }} />
-                    </div>
-                    <div style={{ marginTop: 8, color: "#7c2d12", fontSize: 13 }}>
-                      {jobStatus ? `${jobStatus.done || 0} / ${jobStatus.total || 0} rows processed` : "Preparing crawl..."}
-                    </div>
-                  </div>
-                ) : null}
-                {uploadError ? <div className="dr-error" style={{ marginTop: 8 }}>{uploadError}</div> : null}
-              </div>
-
-              {uploadRows.length ? (
-                <div style={{ marginTop: 18 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 12, flexWrap: "wrap" }}>
-                    <div className="dr-chart-title">Analysis Results · 四项匹配 {uploadRows.filter(r => r.verdict === "FIT").length} · 不匹配 {uploadRows.filter(r => r.verdict === "NOT FIT").length} · 待复核 {uploadRows.filter(r => r.verdict === "REVIEW").length} · 无效输入 {uploadRows.filter(r => r.verdict === "INVALID").length}</div>
-                    <button
-                      type="button"
-                      onClick={() => downloadAnalyzeCsv(uploadRows)}
-                      style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #fdba74", background: "#fff7ed", cursor: "pointer", fontWeight: 600 }}
-                    >
-                      Download CSV
-                    </button>
-                  </div>
-
-                  <p style={{ color: "#64748b", fontSize: 13 }}>资料覆盖表示已能比较的字段数量，并非准确率。按年份、车型、颜色、款式四项判断；年份范围有重叠按宽松规则接受。品牌和图片不作为通过条件，价格仍单独核查。</p>
-                  <div style={{ maxHeight: 620, overflow: "auto" }}>
-                    <table className="dr-table" style={{ minWidth: 760 }}>
-                      <thead>
-                        <tr>
-                          <th>SKU</th>
-                          <th>Verdict</th>
-                          <th>网页状态 / 资料覆盖</th>
-                          <th>差异与待核查项</th>
-                          <th>双方资料与证据</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {uploadRows.map((row, index) => (
-                          <tr key={`${row.sku || index}-${index}`}>
-                            <td>{row.sku || "-"}</td>
-                            <td>{VERDICT_LABELS[row.verdict] || row.verdict || "-"}</td>
-                            <td>{PAGE_LABELS[row.page?.status] || "未完成"}<br />{row.evidenceCoverage || "0/4"}<br /><small>{row.page?.variantStatus === "unconfirmed" ? "变体未确认" : row.page?.selectedVariant || "未检测到多变体"}</small></td>
-                            <td style={{ minWidth: 230, whiteSpace: "normal" }}>{row.reason || "-"}</td>
-                            <td style={{ minWidth: 330 }}>
-                              <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
-                                {safeLink(row.targetUrl) && <a href={safeLink(row.targetUrl)} target="_blank" rel="noreferrer">参考商品</a>}
-                                {row.evidenceId && <a href={`/api/report/data/analyze/evidence?id=${encodeURIComponent(row.evidenceId)}`} download>下载来源证据</a>}
-                              </div>
-                              <details>
-                                <summary style={{ cursor: "pointer" }}>展开双方资料与分项结果</summary>
-                                <p style={{ whiteSpace: "normal" }}><strong>我方：</strong>{row.internal?.text || "无资料"}</p>
-                                <p style={{ whiteSpace: "normal" }}><strong>参考：</strong>{row.page?.title || "未读取到商品标题"}</p>
-                                <p>抓取时间：{row.page?.fetchedAt ? new Date(row.page.fetchedAt).toLocaleString() : "—"}</p>
-                                <p style={{ whiteSpace: "normal" }}>选中变体：{row.page?.selectedVariant || "未确认具体选项"}</p>
-                                <table className="dr-table" style={{ minWidth: 540 }}>
-                                  <thead><tr><th>维度</th><th>结论</th><th>我方</th><th>参考</th><th>依据</th></tr></thead>
-                                  <tbody>{row.dimensions?.map((d: any) => <tr key={d.field}>
-                                    <td>{FIELD_LABELS[d.field] || d.field}</td><td>{STATUS_LABELS[d.status] || d.status}</td>
-                                    <td style={{ whiteSpace: "normal" }}>{d.internal || "未提供"}<br /><small>{row.internal?.sources?.[d.field] || ""}</small></td><td style={{ whiteSpace: "normal" }}>{d.external || "未提供"}</td><td style={{ whiteSpace: "normal" }}>{d.reason}</td>
-                                  </tr>)}</tbody>
-                                </table>
-                                <p style={{ whiteSpace: "normal" }}>价格核查：{row.priceReview?.reason || "需人工核查"}。参考页面价格：{row.page?.currency} {row.page?.price || "未获取"}</p>
-                                {row.evidenceError && <p role="alert">{row.evidenceError}</p>}
-
-                              </details>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : null}
+        <div className="dr-chart-card sf-upload">
+          <div>
+            <label className="sf-file-label" htmlFor="fitment-file">选择表格</label>
+            <div className="sf-actions">
+              <input id="fitment-file" type="file" accept=".xlsx,.xls,.csv" aria-describedby="fitment-format"
+                onChange={chooseFile} disabled={working || reading} />
+              <button className="sf-button" type="button" onClick={downloadTemplate}>下载 Excel 模板</button>
             </div>
+            <p id="fitment-format">支持 Excel 或 CSV。表头需要 SKU 和参考链接。每次上传不超过 {FITMENT_UPLOAD_LIMIT} 条数据（不含表头）。</p>
           </div>
+          {workbook && selected && (
+            <div className="sf-selection">
+              <div>
+                <strong>{workbook.name}</strong>
+                {workbook.sheets.length > 1 ? (
+                  <label className="sf-sheet">工作表
+                    <select value={sheetIndex} onChange={event => selectSheet(Number(event.target.value))} disabled={working}>
+                      {workbook.sheets.map((sheet, i) => <option key={sheet.name} value={i}>{sheet.name}</option>)}
+                    </select>
+                  </label>
+                ) : <small className="sf-sheet">{selected.name}</small>}
+              </div>
+              <button className="sf-button sf-primary" type="button" onClick={startAnalysis} disabled={working || reading || overUploadLimit}>
+                开始分析（{selectedCount} 条）
+              </button>
+            </div>
+          )}
+          {overUploadLimit && <p className="dr-error sf-error" role="alert">当前工作表有 {selectedCount} 条数据，请拆分为每次不超过 {FITMENT_UPLOAD_LIMIT} 条后再上传。</p>}
+          {(working || reading || job) && (
+            <div className="sf-progress" role="status" aria-live="polite">
+              <div>
+                <strong>{reading ? "正在读取表格" : job?.status === "done" ? "分析完成" :
+                  job?.status === "failed" ? "分析失败" : working ? "正在分析" : "进度查询已暂停"}</strong>
+                {job && <span>{job.fileName} · {job.done} / {job.total} 条 · {progress}%</span>}
+              </div>
+              {job && <progress aria-label="分析进度" value={job.done} max={Math.max(job.total, 1)} />}
+              {job?.status === "running" && !working && (
+                <button className="sf-button" type="button" onClick={() => { setError(""); retryPoll(n => n + 1); }}>继续查看进度</button>
+              )}
+            </div>
+          )}
+          {error && <p className="dr-error sf-error" role="alert">{error}</p>}
         </div>
+
+        {!!results.length && (
+          <section className="sf-results" aria-label="分析结果">
+            <div className="sf-results-head">
+              <h3>分析结果</h3>
+              <div className="sf-actions">
+                {retryCount > 0 && <button className="sf-button" type="button" onClick={retryPending} disabled={working}>仅补查未完成项（{retryCount}）</button>}
+                <button className="sf-button sf-primary" type="button" onClick={() => download("xlsx")}>下载 Excel 报告</button>
+                <button className="sf-button" type="button" onClick={() => download("csv")}>下载 CSV</button>
+              </div>
+            </div>
+            <div className="sf-filters" aria-label="按判定筛选">
+              <button type="button" className="sf-button" aria-pressed={filter === "all"} onClick={() => selectFilter("all")}>全部 {results.length}</button>
+              {(Object.keys(VERDICTS) as Verdict[]).map(key => (
+                <button key={key} type="button" className="sf-button" aria-pressed={filter === key} onClick={() => selectFilter(key)}>
+                  {VERDICTS[key]} {results.filter(row => row.verdict === key).length}
+                </button>
+              ))}
+            </div>
+            <div className="dr-table-frame">
+              <div className="dr-table-wrap sf-table-scroll" ref={tableScroll}>
+                <table className="dr-table sf-results-table">
+                  <thead><tr>
+                    <th>SKU</th><th>判定</th><th>网页状态</th><th className="sf-remark">模型备注</th>
+                    {PRICES.map(label => <th key={label}>{label}</th>)}
+                    <th>商品证据</th>
+                  </tr></thead>
+                  <tbody>
+                    {displayed.map((row, index) => {
+                      const price = priceFields(row);
+                      const link = httpsLink(row.targetUrl);
+                      const remark = reportRemark(row.remark || row.reason);
+                      const checks = row.dimensions?.filter(d => Object.hasOwn(FIELDS, d.field)) || [];
+                      return (
+                        <tr key={row.evidenceId || `${row.sku}-${row.sourceRow ?? index}`}>
+                          <td className="sf-sku">{row.sku || "—"}</td>
+                          <td><span className="sf-verdict" data-verdict={row.verdict}>{VERDICTS[row.verdict]}</span></td>
+                          <td>
+                            {PAGE_STATUS[row.page?.status ?? ""] || "未完成"}
+                            {row.page?.retryAt && <div>可补查时间：{displayDate(row.page.retryAt)}</div>}
+                          </td>
+                          <td className="sf-remark">
+                            <span className="sf-remark-text" title={remark || undefined}>{remark || "—"}</span>
+                          </td>
+                          <td className="sf-amount">{price.amount ? <strong>{price.amount}</strong> : "未核实"}</td>
+                          <td>{price.kind || "—"}</td>
+                          <td className="sf-date">{displayDate(price.time)}</td>
+                          <td>{price.sourceUrl ? <a href={price.sourceUrl} target="_blank" rel="noreferrer">{price.source}</a> : price.source || "—"}</td>
+                          <td className="sf-evidence">
+                            <div className="sf-actions">
+                              {link && <a href={link} target="_blank" rel="noreferrer">参考商品</a>}
+                              {row.evidenceId && <a href={`/api/report/data/analyze/evidence?id=${encodeURIComponent(row.evidenceId)}`} download>下载证据</a>}
+                            </div>
+                            <details>
+                              <summary>双方资料</summary>
+                              <p>我方：{reportProductText(row.internal?.text) || "无资料"}</p>
+                              <p>参考：{reportProductText(row.page?.title) || "无资料"}</p>
+                              {row.page?.selectedVariant && <p>变体：{reportProductText(row.page.selectedVariant)}</p>}
+                              {checks.map(d => <p key={d.field}>{fieldName[d.field]} · {CHECK_STATUS[d.status]} · {d.internal || "—"} / {d.external || "—"}</p>)}
+                              {row.evidenceError && <p role="alert">{row.evidenceError}</p>}
+                            </details>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!displayed.length && <tr><td colSpan={9}>没有符合这个筛选条件的记录。</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {pageCount > 1 && (
+              <nav className="sf-actions sf-pagination" aria-label="分析结果分页">
+                <button className="sf-button" type="button" onClick={() => showResultPage(currentPage - 1)} disabled={currentPage === 1}>上一页</button>
+                <span aria-live="polite">第 {currentPage} / {pageCount} 页 · 共 {filtered.length} 条</span>
+                <button className="sf-button" type="button" onClick={() => showResultPage(currentPage + 1)} disabled={currentPage === pageCount}>下一页</button>
+              </nav>
+            )}
+          </section>
+        )}
       </section>
     </div>
   );

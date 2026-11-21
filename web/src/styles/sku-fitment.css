@@ -1,0 +1,109 @@
+.sku-fitment .dr-header p,
+.sf-upload p {
+  color: #526175;
+  margin: 6px 0 0;
+}
+
+.sf-upload {
+  padding: 20px;
+  margin-top: 16px;
+  max-width: 940px;
+}
+
+.sf-file-label,
+.sf-sheet {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.sf-file-label { font-weight: 650; }
+.sf-upload input { max-width: 100%; }
+
+.sf-selection,
+.sf-results-head,
+.sf-progress > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sf-selection,
+.sf-progress {
+  border-top: 1px solid #dde5ef;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.sf-sheet {
+  margin: 5px 0 0;
+  color: #526175;
+}
+
+.sf-sheet select {
+  margin-left: 8px;
+  max-width: 100%;
+  padding: 5px;
+}
+
+.sf-actions,
+.sf-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sf-button {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: white;
+  color: #253449;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sf-button:disabled { opacity: .55; cursor: default; }
+.sf-button[aria-pressed="true"] { border-color: #2458a4; background: #e9f1ff; }
+.sf-primary { color: white; background: #2458a4; border-color: #2458a4; }
+.sf-primary:hover:not(:disabled) { background: #1b4687; }
+
+.sf-progress progress {
+  display: block;
+  width: 100%;
+  height: 12px;
+  margin: 8px 0;
+  accent-color: #2458a4;
+}
+
+.sf-progress span { color: #526175; font-size: .875rem; }
+.sf-upload .sf-error { color: #a52226; margin-top: 12px; }
+.sf-results { margin-top: 24px; }
+.sf-results-head h3 { margin: 0; }
+.sf-filters { margin: 12px 0; }
+.sf-table-scroll { max-height: 66vh; overflow: auto; }
+.sku-fitment .sf-results-table { min-width: 1120px; }
+.sf-results-table thead th { position: sticky; top: 0; z-index: 1; }
+.sf-results-table td { vertical-align: top; }
+.sf-pagination { justify-content: flex-end; margin-top: 12px; color: #526175; }
+.sf-sku, .sf-amount, .sf-date { white-space: nowrap; }
+.sku-fitment .sf-remark { text-align: left; }
+.sf-remark-text {
+  display: -webkit-box;
+  width: clamp(245px, 36vw, 500px);
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.sku-fitment .sf-evidence { min-width: 205px; white-space: normal; }
+.sf-evidence summary { cursor: pointer; margin-top: 5px; }
+.sf-evidence p { margin: 5px 0; }
+.sf-verdict { white-space: nowrap; font-weight: 650; }
+.sf-verdict[data-verdict="FIT"] { color: #17633a; }
+.sf-verdict[data-verdict="NOT FIT"] { color: #a52226; }
+.sf-verdict[data-verdict="REVIEW"] { color: #87521b; }
